@@ -49,6 +49,20 @@ export async function POST(req: NextRequest) {
       clientGroups[t.client_slug].push(t);
     }
 
+    // 3. Fetch data CLIENTS (Master Multi-Client Template)
+    const { data: clients, error: clientsError } = await supabase
+      .from("clients")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (clientsError) {
+      console.error("Error fetching clients:", clientsError.message);
+      console.warn("clients fetch skipped (belum migrate tabel clients?)");
+    }
+    type ClientRow = NonNullable<typeof clients>[number];
+    const clientsList = (clients || []) as ClientRow[];
+    const totalActiveClients = clientsList.filter((c) => c.status === "active").length;
+
     return NextResponse.json({
       ok: true,
       cards: cards || [],
@@ -62,6 +76,11 @@ export async function POST(req: NextRequest) {
         totalTables: tableQrs?.length || 0,
         totalClients: Object.keys(clientGroups).length,
         clientGroups,
+      },
+      clients: clientsList,
+      clientStats: {
+        totalClients: clientsList.length,
+        totalActiveClients,
       },
     });
   } catch (err) {
