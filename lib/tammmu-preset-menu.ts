@@ -1,3 +1,9 @@
+// Base URL aset foto menu Tammmu di Supabase Storage (hasil migrasi dari public/tammmu/*).
+// Preset items masih menyimpan nama file saja via resolver di /api/admin/action.
+export const TAMMMU_ASSET_BASE = "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets/tammmu/menu";
+
+export const TAMMMU_ASSET_BRAND_BASE = "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets/tammmu/brand";
+
 export type PresetCategory = { key: string; label: string; sort_order: number };
 export type PresetItem = {
   name: string;

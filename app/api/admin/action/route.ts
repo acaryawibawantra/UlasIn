@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
-import { TAMMMU_PRESET_CATEGORIES, TAMMMU_PRESET_ITEMS } from "@/lib/tammmu-preset-menu";
+import { TAMMMU_PRESET_CATEGORIES, TAMMMU_PRESET_ITEMS, TAMMMU_ASSET_BASE } from "@/lib/tammmu-preset-menu";
 
 function generateCardId(length = 6) {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -671,6 +671,11 @@ export async function POST(req: NextRequest) {
           itemSkipped++;
           continue;
         }
+        // Resolver aset legacy: path lokal /tammmu/* (folder public, sudah dimigrasi)
+        // → URL Supabase Storage menu-assets/tammmu/menu/<nama-file>
+        const resolvedImage = pi.image_url?.startsWith("/tammmu/")
+          ? `${TAMMMU_ASSET_BASE}/${pi.image_url.split("/").pop()}`
+          : pi.image_url;
         const payload: any = {
           client_slug: slug,
           category_key: pi.category_key,
@@ -678,7 +683,7 @@ export async function POST(req: NextRequest) {
           price_label: pi.price_label,
           price_num: pi.price_num,
           description: pi.description,
-          image_url: pi.image_url,
+          image_url: resolvedImage,
           badge: pi.badge,
           is_featured: pi.is_featured,
           sort_order: pi.sort_order,
