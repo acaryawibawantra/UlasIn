@@ -23,6 +23,7 @@ type ClientData = {
   address: string | null;
   instagram_url: string | null;
   whatsapp_url: string | null;
+  feature_flags: Record<string, boolean> | null;
 };
 
 type CategoryRow = { id: number; client_slug: string; key: string; label: string; sort_order: number };
@@ -122,6 +123,7 @@ export default function ClientPortal() {
     tagline: "",
     logo_url: "",
     cover_mobile_url: "",
+    flags: { waiter_call: true, review: true, wifi: true },
   });
 
   /* ── Helpers ── */
@@ -152,6 +154,7 @@ export default function ClientPortal() {
         tagline: data.client?.tagline || "",
         logo_url: data.client?.logo_url || "",
         cover_mobile_url: data.client?.cover_mobile_url || "",
+        flags: { waiter_call: true, review: true, wifi: true, ...(data.client?.feature_flags || {}) },
       });
     } catch (err) {
       showToast("err", err instanceof Error ? err.message : "Gagal memuat data.");
@@ -313,6 +316,7 @@ export default function ClientPortal() {
       tagline: profileForm.tagline.trim() || null,
       logoUrl: profileForm.logo_url.trim() || null,
       coverMobileUrl: profileForm.cover_mobile_url.trim() || null,
+      featureFlags: profileForm.flags,
     });
     if (ok) await loadAll();
   }
@@ -759,6 +763,54 @@ export default function ClientPortal() {
                 label: "Cover Mobile (banner atas halaman)",
                 hint: "Rekomendasi portrait 9:16.",
               })}
+            </div>
+
+            <div className="bg-white border border-[#E8E3DA] rounded-2xl p-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-[#3C3833]">Tampilan Fitur Halaman</h3>
+                <p className="text-[11px] text-[#8E897C] mt-1">
+                  Sembunyikan atau tampilkan shortcut di halaman menu Anda. Perubahan langsung efek setelah disimpan.
+                </p>
+              </div>
+              {[
+                {
+                  key: "waiter_call" as const,
+                  label: "🛎️ Tombol Panggil Waiter",
+                  desc: "Tombol melayang di bawah halaman untuk memanggil pelayan.",
+                },
+                {
+                  key: "review" as const,
+                  label: "⭐ Rating / Google Review",
+                  desc: "Kartu review & tombol rating menuju ulasan Google Maps.",
+                },
+                {
+                  key: "wifi" as const,
+                  label: "📶 Kartu WiFi",
+                  desc: "Kartu info WiFi + tombol salin password untuk tamu.",
+                },
+              ].map((f) => (
+                <label
+                  key={f.key}
+                  className={`flex items-start justify-between gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    profileForm.flags[f.key] ? "border-emerald-200 bg-emerald-50/40" : "border-[#E8E3DA] bg-[#FAF8F5]"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-[#3C3833]">{f.label}</p>
+                    <p className="text-[11px] text-[#8E897C] mt-0.5 leading-relaxed">{f.desc}</p>
+                  </div>
+                  <div className="shrink-0 pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={profileForm.flags[f.key]}
+                      onChange={(e) =>
+                        setProfileForm({ ...profileForm, flags: { ...profileForm.flags, [f.key]: e.target.checked } })
+                      }
+                      className="w-6 h-6 rounded-md accent-emerald-500 cursor-pointer"
+                    />
+                  </div>
+                </label>
+              ))}
             </div>
 
             <button

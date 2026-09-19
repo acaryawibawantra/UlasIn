@@ -19,6 +19,8 @@ type ClientBranding = {
   address?: string | null;
   instagram_url?: string | null;
   whatsapp_url?: string | null;
+  /* Toggle tampil/hide fitur shortcut — default semua true */
+  feature_flags?: Record<string, boolean> | null;
 };
 
 type MenuCategory = {
@@ -80,8 +82,13 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
   const reviewUrl = buildGoogleReviewUrl(client.google_place_id, client.google_review_url);
   const wifiPass = client.wifi_password || "";
   const wifiSsid = client.wifi_ssid || `${client.business_name}_Guest`;
-  const hasWifi = !!(wifiPass || client.wifi_ssid);
-  const hasReview = reviewUrl !== "#";
+
+  /* ── Feature flags (toggle show/hide dari Pengaturan portal client) ── */
+  const ff = { waiter_call: true, review: true, wifi: true, ...(client.feature_flags || {}) };
+  const hasWifi = ff.wifi !== false && !!(wifiPass || client.wifi_ssid);
+  const hasReview = ff.review !== false && reviewUrl !== "#";
+  const hasWaiter = ff.waiter_call !== false;
+  const showDock = hasWaiter || hasReview;
 
   /* ── Build unified product-like items ── */
   const catMap = new Map(categories.map((c) => [c.key, c.label]));
@@ -600,12 +607,15 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
             Pemesanan &amp; Pembayaran
           </p>
           <p className="text-[11px] leading-relaxed font-body" style={{ color: muted }}>
-            Sebutkan Meja {tableNum} ke kasir atau gunakan tombol panggil bantuan pelayan di bawah.
+            {hasWaiter
+              ? `Sebutkan Meja ${tableNum} ke kasir atau gunakan tombol panggil bantuan pelayan di bawah.`
+              : `Sebutkan Meja ${tableNum} ke kasir kami untuk pemesanan.`}
           </p>
         </div>
       </main>
 
       {/* ── 5. Floating Bottom Dock — Liquid Glass ── */}
+      {showDock && (
       <aside
         className={`fixed bottom-4 inset-x-0 z-40 px-4 pointer-events-none transition-all duration-500 ease-out ${isCoverVisible ? "translate-y-24 opacity-0" : "translate-y-0 opacity-100"}`}
       >
@@ -619,6 +629,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
             border: "1px solid rgba(255,255,255,0.35)",
           }}
         >
+          {hasWaiter && (
           <button
             onClick={handleCallWaiter}
             className="flex-1 py-2.5 px-4 rounded-full text-[11px] font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer font-body"
@@ -647,6 +658,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
             </svg>
             <span className="truncate">{waiterCalled ? "Dipanggil..." : "Panggil Waiter"}</span>
           </button>
+          )}
           {hasReview && (
             <a
               href={reviewUrl}
@@ -670,6 +682,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
           )}
         </div>
       </aside>
+      )}
 
       {/* ── 6. Product Detail Modal ── */}
       {selectedProduct && (

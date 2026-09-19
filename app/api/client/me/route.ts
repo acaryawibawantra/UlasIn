@@ -14,7 +14,7 @@ export async function GET() {
     const { data: client, error: cErr } = await supabase
       .from("clients")
       .select(
-        "slug, business_name, status, template_key, logo_url, cover_mobile_url, tagline, operating_hours, wifi_ssid, wifi_password, google_place_id, google_review_url, theme_accent, theme_bg, address, instagram_url, whatsapp_url"
+        "slug, business_name, status, template_key, logo_url, cover_mobile_url, tagline, operating_hours, wifi_ssid, wifi_password, google_place_id, google_review_url, theme_accent, theme_bg, address, instagram_url, whatsapp_url, feature_flags"
       )
       .eq("slug", session.clientSlug)
       .maybeSingle();

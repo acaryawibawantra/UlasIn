@@ -153,3 +153,9 @@ create table if not exists client_users (
 create index if not exists idx_client_users_slug on client_users (client_slug);
 create index if not exists idx_client_users_email on client_users (lower(email));
 alter table client_users enable row level security;
+
+-- Toggle show/hide fitur shortcut per client (Panggil Waiter, Review, WiFi).
+-- JSONB fleksibel: menambah toggle baru nanti cukup lewat portal tanpa ALTER TABLE.
+alter table clients
+  add column if not exists feature_flags jsonb not null
+  default '{"waiter_call": true, "review": true, "wifi": true}'::jsonb;

@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       themeBg,
       logoUrl,
       coverMobileUrl,
+      featureFlags,
     } = body || {};
 
     const supabase = getSupabaseServerClient();
@@ -200,6 +201,29 @@ export async function POST(req: NextRequest) {
       if (themeBg !== undefined) patch.theme_bg = /^#[0-9a-fA-F]{6}$/.test(String(themeBg)) ? themeBg : undefined;
       if (logoUrl !== undefined) patch.logo_url = logoUrl ? String(logoUrl).slice(0, 500) : null;
       if (coverMobileUrl !== undefined) patch.cover_mobile_url = coverMobileUrl ? String(coverMobileUrl).slice(0, 500) : null;
+
+      // Feature flags: whitelist key + tipe boolean, merge partial dengan nilai existing
+      if (featureFlags && typeof featureFlags === "object" && !Array.isArray(featureFlags)) {
+        const ALLOWED_FLAGS = ["waiter_call", "review", "wifi"];
+        const { data: cur } = await supabase
+          .from("clients")
+          .select("feature_flags")
+          .eq("slug", slug)
+          .maybeSingle();
+        const merged: Record<string, boolean> = {
+          waiter_call: true,
+          review: true,
+          wifi: true,
+          ...(cur?.feature_flags || {}),
+        };
+        for (const k of ALLOWED_FLAGS) {
+          if (typeof (featureFlags as Record<string, unknown>)[k] === "boolean") {
+            merged[k] = (featureFlags as Record<string, boolean>)[k];
+          }
+        }
+        patch.feature_flags = merged;
+      }
+
       // buang key undefined (validasi hex gagal)
       Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k]);
 
