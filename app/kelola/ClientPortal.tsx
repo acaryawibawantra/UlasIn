@@ -24,6 +24,7 @@ type ClientData = {
   instagram_url: string | null;
   whatsapp_url: string | null;
   feature_flags: Record<string, boolean> | null;
+  wifi_zones: Array<{ label?: string | null; ssid?: string; password?: string; from?: number; to?: number }> | null;
 };
 
 type CategoryRow = { id: number; client_slug: string; key: string; label: string; sort_order: number };
@@ -125,6 +126,10 @@ export default function ClientPortal() {
     cover_mobile_url: "",
     flags: { waiter_call: true, review: true, wifi: true },
   });
+  /* Zona WiFi per range meja (semua string untuk input form) */
+  type ZoneForm = { label: string; ssid: string; password: string; from: string; to: string };
+  const emptyZone: ZoneForm = { label: "", ssid: "", password: "", from: "", to: "" };
+  const [wifiZones, setWifiZones] = useState<ZoneForm[]>([]);
 
   /* ── Helpers ── */
   const showToast = (kind: "ok" | "err", msg: string) => {
@@ -156,6 +161,15 @@ export default function ClientPortal() {
         cover_mobile_url: data.client?.cover_mobile_url || "",
         flags: { waiter_call: true, review: true, wifi: true, ...(data.client?.feature_flags || {}) },
       });
+      setWifiZones(
+        (data.client?.wifi_zones || []).map((z: any) => ({
+          label: z.label || "",
+          ssid: z.ssid || "",
+          password: z.password || "",
+          from: z.from != null ? String(z.from) : "",
+          to: z.to != null ? String(z.to) : "",
+        }))
+      );
     } catch (err) {
       showToast("err", err instanceof Error ? err.message : "Gagal memuat data.");
     } finally {
@@ -317,6 +331,16 @@ export default function ClientPortal() {
       logoUrl: profileForm.logo_url.trim() || null,
       coverMobileUrl: profileForm.cover_mobile_url.trim() || null,
       featureFlags: profileForm.flags,
+      wifiZones: wifiZones
+        // Skip baris zona yang belum diisi apa-apa (biar tidak memblokir save)
+        .filter((z) => z.ssid.trim() || z.from.trim() || z.to.trim())
+        .map((z) => ({
+          label: z.label.trim(),
+          ssid: z.ssid.trim(),
+          password: z.password,
+          from: Number(z.from) || 0,
+          to: Number(z.to) || 0,
+        })),
     });
     if (ok) await loadAll();
   }
@@ -745,6 +769,115 @@ export default function ClientPortal() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="bg-white border border-[#E8E3DA] rounded-2xl p-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-[#3C3833]">Zona WiFi per Area Meja</h3>
+                <p className="text-[11px] text-[#8E897C] mt-1 leading-relaxed">
+                  Punya WiFi berbeda untuk indoor &amp; outdoor? Atur per range meja — tamu yang scan QR meja 1-15
+                  otomatis lihat WiFi area itu. Kalau nomor meja tidak masuk zona mana pun, dipakai WiFi umum di atas.
+                </p>
+              </div>
+
+              {wifiZones.length === 0 && (
+                <div className="p-4 rounded-xl bg-[#FAF8F5] border border-dashed border-[#E8E3DA] text-center">
+                  <p className="text-xs text-[#8E897C]">
+                    Belum ada zona — semua meja memakai WiFi umum. Klik tombol di bawah untuk membuat zona pertama (mis. Indoor / Outdoor).
+                  </p>
+                </div>
+              )}
+
+              {wifiZones.map((z, i) => (
+                <div key={i} className="p-4 rounded-xl bg-[#FAF8F5] border border-[#E8E3DA] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold text-[#3C3833]">Zona {i + 1}{z.label ? ` · ${z.label}` : ""}</p>
+                    <button
+                      type="button"
+                      onClick={() => setWifiZones(wifiZones.filter((_, idx) => idx !== i))}
+                      className="p-1.5 rounded-lg bg-white border border-[#E8E3DA] hover:bg-red-50 hover:border-red-100 cursor-pointer"
+                      title="Hapus zona ini"
+                    >
+                      <span className="material-symbols-outlined text-[14px] text-red-500">delete</span>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8E897C] mb-1">Label Area</label>
+                      <input
+                        value={z.label}
+                        onChange={(e) =>
+                          setWifiZones(wifiZones.map((zz, idx) => (idx === i ? { ...zz, label: e.target.value } : zz)))
+                        }
+                        placeholder="Indoor / Outdoor"
+                        className="w-full bg-white border border-[#E8E3DA] rounded-xl px-3 py-2 text-sm font-bold text-[#3C3833] focus:outline-none focus:border-[#3C3833]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8E897C] mb-1">Nama WiFi (SSID) *</label>
+                      <input
+                        value={z.ssid}
+                        onChange={(e) =>
+                          setWifiZones(wifiZones.map((zz, idx) => (idx === i ? { ...zz, ssid: e.target.value } : zz)))
+                        }
+                        placeholder="Tammmu_Indoor"
+                        className="w-full bg-white border border-[#E8E3DA] rounded-xl px-3 py-2 text-sm font-bold text-[#3C3833] focus:outline-none focus:border-[#3C3833]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8E897C] mb-1">Password</label>
+                      <input
+                        value={z.password}
+                        onChange={(e) =>
+                          setWifiZones(wifiZones.map((zz, idx) => (idx === i ? { ...zz, password: e.target.value } : zz)))
+                        }
+                        placeholder="password area ini"
+                        className="w-full bg-white border border-[#E8E3DA] rounded-xl px-3 py-2 text-sm font-bold text-[#3C3833] focus:outline-none focus:border-[#3C3833]"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#8E897C] mb-1">Meja Dari *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={z.from}
+                          onChange={(e) =>
+                            setWifiZones(wifiZones.map((zz, idx) => (idx === i ? { ...zz, from: e.target.value.replace(/[^0-9]/g, "") } : zz)))
+                          }
+                          placeholder="1"
+                          className="w-full bg-white border border-[#E8E3DA] rounded-xl px-3 py-2 text-sm font-bold text-[#3C3833] focus:outline-none focus:border-[#3C3833]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#8E897C] mb-1">Sampai *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={z.to}
+                          onChange={(e) =>
+                            setWifiZones(wifiZones.map((zz, idx) => (idx === i ? { ...zz, to: e.target.value.replace(/[^0-9]/g, "") } : zz)))
+                          }
+                          placeholder="15"
+                          className="w-full bg-white border border-[#E8E3DA] rounded-xl px-3 py-2 text-sm font-bold text-[#3C3833] focus:outline-none focus:border-[#3C3833]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-[#8E897C]">
+                    Berlaku untuk QR meja {z.from || "?"} – {z.to || "?"}.
+                  </p>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setWifiZones([...wifiZones, { ...emptyZone }])}
+                disabled={wifiZones.length >= 10}
+                className="w-full py-2.5 rounded-xl bg-white border-2 border-dashed border-[#E8E3DA] text-sm font-bold text-[#3C3833] hover:border-[#3C3833] hover:bg-[#FAF8F5] disabled:opacity-50 cursor-pointer"
+              >
+                ➕ Tambah Zona WiFi
+              </button>
             </div>
 
             <div className="bg-white border border-[#E8E3DA] rounded-2xl p-6 space-y-5">

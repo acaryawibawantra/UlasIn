@@ -122,6 +122,12 @@ export default async function ClientTemplatePage({ params }: { params: Promise<P
   /* 5. Choose template renderer based on client.template_key */
   const template = (client.template_key || "tammmu_v1").toLowerCase();
 
+  /* Zona WiFi: kirim HANYA zona yang cocok dengan nomor meja ini ke browser
+     (privasi — password zona lain tidak ikut dalam payload HTML) */
+  const matchedZone = (Array.isArray(client.wifi_zones) ? client.wifi_zones : []).find(
+    (z: any) => typeof z?.from === "number" && typeof z?.to === "number" && num >= z.from && num <= z.to
+  );
+
   let templateRender: React.ReactNode;
   if (template === "tammmu_v1" || true /* fallback default */) {
     templateRender = (
@@ -142,6 +148,8 @@ export default async function ClientTemplatePage({ params }: { params: Promise<P
           address: client.address,
           instagram_url: client.instagram_url,
           whatsapp_url: client.whatsapp_url,
+          feature_flags: client.feature_flags,
+          wifi_zones: matchedZone ? [matchedZone] : [],
         }}
         categories={categories}
         items={items}

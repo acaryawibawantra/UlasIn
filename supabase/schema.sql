@@ -159,3 +159,10 @@ alter table client_users enable row level security;
 alter table clients
   add column if not exists feature_flags jsonb not null
   default '{"waiter_call": true, "review": true, "wifi": true}'::jsonb;
+
+-- Zona WiFi per area meja (misal Indoor meja 1-15, Outdoor 16-30).
+-- Halaman /slug/XX otomatis pilih zona sesuai nomor meja; jika tidak
+-- ada zona yang cocok → fallback ke wifi_ssid/wifi_password global.
+-- Bentuk: [{label, ssid, password, from, to}]
+alter table clients
+  add column if not exists wifi_zones jsonb not null default '[]'::jsonb;

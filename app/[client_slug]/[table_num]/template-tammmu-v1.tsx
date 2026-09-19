@@ -21,6 +21,8 @@ type ClientBranding = {
   whatsapp_url?: string | null;
   /* Toggle tampil/hide fitur shortcut — default semua true */
   feature_flags?: Record<string, boolean> | null;
+  /* Zona WiFi per range meja: [{label, ssid, password, from, to}] */
+  wifi_zones?: Array<{ label?: string; ssid?: string; password?: string; from?: number; to?: number }> | null;
 };
 
 type MenuCategory = {
@@ -80,15 +82,22 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
 
   /* ── URLs & assets ── */
   const reviewUrl = buildGoogleReviewUrl(client.google_place_id, client.google_review_url);
-  const wifiPass = client.wifi_password || "";
-  const wifiSsid = client.wifi_ssid || `${client.business_name}_Guest`;
+
+  /* ── Zona WiFi: cari zona yang cocok dengan nomor meja ini ── */
+  const tableNumInt = parseInt(tableNum, 10) || 1;
+  const zones = Array.isArray(client.wifi_zones) ? client.wifi_zones : [];
+  const activeZone = zones.find(
+    (z) => typeof z.from === "number" && typeof z.to === "number" && tableNumInt >= z.from && tableNumInt <= z.to
+  );
+  const wifiPass = (activeZone?.password ?? client.wifi_password) || "";
+  const wifiSsid = activeZone?.ssid || client.wifi_ssid || `${client.business_name}_Guest`;
+  const wifiZoneLabel = activeZone?.label || null;
 
   /* ── Feature flags (toggle show/hide dari Pengaturan portal client) ── */
   const ff = { waiter_call: true, review: true, wifi: true, ...(client.feature_flags || {}) };
-  const hasWifi = ff.wifi !== false && !!(wifiPass || client.wifi_ssid);
+  const hasWifi = ff.wifi !== false && !!(wifiPass || client.wifi_ssid || activeZone?.ssid);
   const hasReview = ff.review !== false && reviewUrl !== "#";
   const hasWaiter = ff.waiter_call !== false;
-  const showDock = hasWaiter || hasReview;
 
   /* ── Build unified product-like items ── */
   const catMap = new Map(categories.map((c) => [c.key, c.label]));
@@ -329,7 +338,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
                       className="text-[9px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full"
                       style={{ background: bgAlt, color: muted }}
                     >
-                      WiFi
+                      {wifiZoneLabel ? `WiFi · ${wifiZoneLabel}` : "WiFi"}
                     </span>
                   </div>
                   <p className="font-semibold text-xs" style={{ color: onBg }}>
@@ -608,14 +617,13 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
           </p>
           <p className="text-[11px] leading-relaxed font-body" style={{ color: muted }}>
             {hasWaiter
-              ? `Sebutkan Meja ${tableNum} ke kasir atau gunakan tombol panggil bantuan pelayan di bawah.`
-              : `Sebutkan Meja ${tableNum} ke kasir kami untuk pemesanan.`}
+              ? `Sebutkan Meja ${tableNum} ke kasir, atau pakai tombol "Panggil Waiter" di bawah.`
+              : `Pesan makanan & minuman langsung di kasir ya — cukup sebutkan Meja ${tableNum}, pesanan langsung kami proses.`}
           </p>
         </div>
       </main>
 
       {/* ── 5. Floating Bottom Dock — Liquid Glass ── */}
-      {showDock && (
       <aside
         className={`fixed bottom-4 inset-x-0 z-40 px-4 pointer-events-none transition-all duration-500 ease-out ${isCoverVisible ? "translate-y-24 opacity-0" : "translate-y-0 opacity-100"}`}
       >
@@ -629,7 +637,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
             border: "1px solid rgba(255,255,255,0.35)",
           }}
         >
-          {hasWaiter && (
+          {hasWaiter ? (
           <button
             onClick={handleCallWaiter}
             className="flex-1 py-2.5 px-4 rounded-full text-[11px] font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer font-body"
@@ -658,6 +666,34 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
             </svg>
             <span className="truncate">{waiterCalled ? "Dipanggil..." : "Panggil Waiter"}</span>
           </button>
+          ) : (
+          <div
+            className="flex-1 py-2.5 px-4 rounded-full text-[11px] font-semibold flex items-center justify-center gap-2 font-body"
+            style={{
+              background: `${accent}b8`,
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              color: bg,
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), 0 2px 8px rgba(0,0,0,0.12)",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <svg
+              className="w-3.5 h-3.5 shrink-0"
+              style={{ color: "#6ee7b7" }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              />
+            </svg>
+            <span className="truncate">Pesan langsung di kasir · sebut Meja {tableNum}</span>
+          </div>
           )}
           {hasReview && (
             <a
@@ -682,7 +718,6 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
           )}
         </div>
       </aside>
-      )}
 
       {/* ── 6. Product Detail Modal ── */}
       {selectedProduct && (

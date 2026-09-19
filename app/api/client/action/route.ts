@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       logoUrl,
       coverMobileUrl,
       featureFlags,
+      wifiZones,
     } = body || {};
 
     const supabase = getSupabaseServerClient();
@@ -222,6 +223,38 @@ export async function POST(req: NextRequest) {
           }
         }
         patch.feature_flags = merged;
+      }
+
+      // Zona WiFi per range meja: validasi array (max 10 zona), sanitize tiap field
+      if (wifiZones !== undefined) {
+        if (!Array.isArray(wifiZones)) {
+          return NextResponse.json({ error: "Format zona WiFi tidak valid." }, { status: 400 });
+        }
+        if (wifiZones.length > 10) {
+          return NextResponse.json({ error: "Maksimal 10 zona WiFi." }, { status: 400 });
+        }
+        const cleanZones = [];
+        for (const z of wifiZones) {
+          const from = Number(z?.from);
+          const to = Number(z?.to);
+          if (!Number.isFinite(from) || !Number.isFinite(to) || from < 1 || to < 1 || to < from) {
+            return NextResponse.json(
+              { error: `Range meja tidak valid (harus 1-999, "dari" ≤ "sampai").` },
+              { status: 400 }
+            );
+          }
+          if (!z?.ssid || !String(z.ssid).trim()) {
+            return NextResponse.json({ error: "Setiap zona wajib punya nama WiFi (SSID)." }, { status: 400 });
+          }
+          cleanZones.push({
+            label: String(z.label || "").trim().slice(0, 30) || null,
+            ssid: String(z.ssid).trim().slice(0, 60),
+            password: String(z.password || "").slice(0, 80),
+            from: Math.min(999, Math.round(from)),
+            to: Math.min(999, Math.round(to)),
+          });
+        }
+        patch.wifi_zones = cleanZones;
       }
 
       // buang key undefined (validasi hex gagal)
