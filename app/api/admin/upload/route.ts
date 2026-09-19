@@ -9,13 +9,18 @@ export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
     const adminSecret = process.env.ADMIN_SECRET_KEY || "ratey-admin-secret-2026";
-    const providedKey = authHeader ? authHeader.replace("Bearer ", "") : null;
+
+    // Parse FormData SEKALI di awal — secretKey dikirim via form field
+    // (dashboard upload multipart, bukan JSON body seperti route action)
+    const formData = await req.formData();
+    const providedKey = authHeader
+      ? authHeader.replace("Bearer ", "")
+      : ((formData.get("secretKey") as string | null) || null);
 
     if (!providedKey || providedKey !== adminSecret) {
       return NextResponse.json({ error: "Akses ditolak. Secret key salah." }, { status: 401 });
     }
 
-    const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const folder = (formData.get("folder") as string | null) || "menu";
     const scope = (formData.get("scope") as string | null) || "menu_item";
