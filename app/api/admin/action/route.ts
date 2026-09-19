@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { TAMMMU_PRESET_CATEGORIES, TAMMMU_PRESET_ITEMS, TAMMMU_ASSET_BASE } from "@/lib/tammmu-preset-menu";
+import { hashPassword } from "@/lib/client-auth";
 
 function generateCardId(length = 6) {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -706,6 +707,80 @@ export async function POST(req: NextRequest) {
         message: `Import Tammmu Preset selesai. Kategori dibuat: ${catInserted}, skip: ${catSkipped}. Item dibuat: ${itemInserted}, skip: ${itemSkipped}.`,
         summary: { catInserted, catSkipped, itemInserted, itemSkipped },
       });
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+    12. CLIENT ACCESS MANAGEMENT (Portal /kelola — akun login client)
+    ───────────────────────────────────────────────────────────────────── */
+    if (action === "list_client_users") {
+      const slug = sanitizeSlug(clientSlug || "");
+      if (!slug) return NextResponse.json({ error: "Client Slug wajib." }, { status: 400 });
+      const { data, error } = await supabase
+        .from("client_users")
+        .select("id, client_slug, email, is_active, last_login_at, created_at")
+        .eq("client_slug", slug)
+        .order("created_at", { ascending: true });
+      if (error) {
+        // Tabel belum ada (belum migrate) → return empty dengan flag
+        if (error.message.includes("does not exist") || (error as any)?.code === "42P01") {
+          return NextResponse.json({ ok: true, users: [], migrated: false });
+        }
+        console.error("list client users err:", error.message);
+        return NextResponse.json({ error: "Gagal memuat daftar akun." }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, users: data || [], migrated: true });
+    }
+
+    if (action === "create_client_user") {
+      const slug = sanitizeSlug(clientSlug || "");
+      const email = String(body?.clientUserEmail || "").trim().toLowerCase();
+      const password = String(body?.clientUserPassword || "");
+      if (!slug || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json({ error: "Email tidak valid." }, { status: 400 });
+      }
+      if (password.length < 6) {
+        return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+      }
+      const passwordHash = await hashPassword(password);
+      const { error } = await supabase.from("client_users").insert({
+        client_slug: slug,
+        email,
+        password_hash: passwordHash,
+        is_active: true,
+      });
+      if (error) {
+        if ((error as any)?.code === "23505")
+          return NextResponse.json({ error: `Email ${email} sudah terdaftar untuk client ini.` }, { status: 409 });
+        if (error.message.includes("does not exist") || (error as any)?.code === "42P01")
+          return NextResponse.json(
+            { error: "Tabel client_users belum ada. Jalankan SQL migration terbaru." },
+            { status: 400 }
+          );
+        throw new Error(error.message);
+      }
+      return NextResponse.json({ ok: true, message: `Akun ${email} dibuat.` });
+    }
+
+    if (action === "reset_client_user_password") {
+      const id = Number(body?.clientUserId);
+      const password = String(body?.clientUserPassword || "");
+      if (!Number.isFinite(id) || id <= 0)
+        return NextResponse.json({ error: "ID akun tidak valid." }, { status: 400 });
+      if (password.length < 6)
+        return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+      const passwordHash = await hashPassword(password);
+      const { error } = await supabase.from("client_users").update({ password_hash: passwordHash }).eq("id", id);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ ok: true, message: "Password direset." });
+    }
+
+    if (action === "delete_client_user") {
+      const id = Number(body?.clientUserId);
+      if (!Number.isFinite(id) || id <= 0)
+        return NextResponse.json({ error: "ID akun tidak valid." }, { status: 400 });
+      const { error } = await supabase.from("client_users").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ ok: true, message: "Akun dihapus." });
     }
 
     return NextResponse.json({ error: "Aksi tidak valid." }, { status: 400 });

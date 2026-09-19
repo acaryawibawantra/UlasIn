@@ -132,3 +132,24 @@ alter table menu_items enable row level security;
 insert into storage.buckets (id, name, public)
 values ('menu-assets', 'menu-assets', true)
 on conflict (id) do nothing;
+
+-- ═══════════════════════════════════════════════════════
+-- PORTAL CLIENT (/kelola): akun login client untuk kelola
+-- menu & pengaturan bisnis mereka sendiri (self-service).
+-- Password disimpan sebagai bcrypt hash. Satu client bisa
+-- punya beberapa akun (misal owner + staff).
+-- ═══════════════════════════════════════════════════════
+create table if not exists client_users (
+  id bigserial primary key,
+  client_slug text not null references clients(slug) on delete cascade,
+  email text not null,
+  password_hash text not null,
+  is_active boolean not null default true,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (client_slug, email)
+);
+
+create index if not exists idx_client_users_slug on client_users (client_slug);
+create index if not exists idx_client_users_email on client_users (lower(email));
+alter table client_users enable row level security;

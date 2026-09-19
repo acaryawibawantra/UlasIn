@@ -267,6 +267,16 @@ export default function AdminDashboard({
   const [isMenuSubmitting, setIsMenuSubmitting] = useState(false);
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
 
+  // Client Access Modal (Portal /kelola)
+  type ClientUserRow = { id: number; client_slug: string; email: string; is_active: boolean; last_login_at: string | null; created_at: string };
+  const [accessModal, setAccessModal] = useState<{ clientSlug: string; businessName: string } | null>(null);
+  const [clientUsers, setClientUsers] = useState<ClientUserRow[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessSubmitting, setAccessSubmitting] = useState(false);
+  const [accessForm, setAccessForm] = useState({ email: "", password: "" });
+  const [resetTarget, setResetTarget] = useState<ClientUserRow | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+
   // Category Modal
   const [categoryModal, setCategoryModal] = useState<
     | { mode: "create"; initial?: Partial<CategoryFormState> }
@@ -544,6 +554,112 @@ export default function AdminDashboard({
       return "connection";
     } finally {
       setIsClientSubmitting(false);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════
+     CLIENT ACCESS HANDLERS (Portal /kelola)
+     ═══════════════════════════════════════════════════ */
+
+  async function handleOpenAccess(client: { slug: string; business_name: string }) {
+    setAccessModal({ clientSlug: client.slug, businessName: client.business_name });
+    setAccessForm({ email: "", password: "" });
+    setResetTarget(null);
+    setResetPassword("");
+    setAccessLoading(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "list_client_users", clientSlug: client.slug }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal memuat akun.");
+      setClientUsers(data.users || []);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal memuat akun.");
+      setAccessModal(null);
+    } finally {
+      setAccessLoading(false);
+    }
+  }
+
+  async function handleCreateClientUser() {
+    if (!accessModal) return;
+    if (!accessForm.email.trim() || !accessForm.password) {
+      alert("Email dan password wajib diisi.");
+      return;
+    }
+    setAccessSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secretKey,
+          action: "create_client_user",
+          clientSlug: accessModal.clientSlug,
+          clientUserEmail: accessForm.email.trim(),
+          clientUserPassword: accessForm.password,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal membuat akun.");
+      alert(data?.message || "Akun dibuat.");
+      setAccessForm({ email: "", password: "" });
+      await handleOpenAccess({ slug: accessModal.clientSlug, business_name: accessModal.businessName });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal membuat akun.");
+    } finally {
+      setAccessSubmitting(false);
+    }
+  }
+
+  async function handleResetClientUserPassword() {
+    if (!resetTarget || resetPassword.length < 6) {
+      alert("Password baru minimal 6 karakter.");
+      return;
+    }
+    setAccessSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secretKey,
+          action: "reset_client_user_password",
+          clientUserId: resetTarget.id,
+          clientUserPassword: resetPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal reset password.");
+      alert(data?.message || "Password direset.");
+      setResetTarget(null);
+      setResetPassword("");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal reset password.");
+    } finally {
+      setAccessSubmitting(false);
+    }
+  }
+
+  async function handleDeleteClientUser(user: ClientUserRow) {
+    if (!window.confirm(`Hapus akun ${user.email}?\nClient tidak akan bisa login dengan email ini lagi.`)) return;
+    setAccessSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "delete_client_user", clientUserId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal hapus akun.");
+      setClientUsers((prev) => prev.filter((u) => u.id !== user.id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal hapus akun.");
+    } finally {
+      setAccessSubmitting(false);
     }
   }
 
@@ -1906,10 +2022,17 @@ export default function AdminDashboard({
                             setCustomClientSlugMode("dropdown");
                             setActiveTab("custom_tables");
                           }}
-                          className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#EFF6FF] text-[#1E40AF] border border-[#BFDBFE] hover:bg-[#DBEAFE] text-[11px] font-bold transition-colors cursor-pointer col-span-2"
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#EFF6FF] text-[#1E40AF] border border-[#BFDBFE] hover:bg-[#DBEAFE] text-[11px] font-bold transition-colors cursor-pointer"
                         >
                           <span className="material-symbols-outlined text-[14px]">qr_code_scanner</span>
                           <span>Generate Meja</span>
+                        </button>
+                        <button
+                          onClick={() => handleOpenAccess(client)}
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 text-[11px] font-bold transition-colors cursor-pointer col-span-2"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">key</span>
+                          <span>Akses Portal Client</span>
                         </button>
                         <button
                           onClick={() =>
@@ -3514,6 +3637,153 @@ export default function AdminDashboard({
                     </>
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8: CLIENT ACCESS MANAGER (Portal /kelola) */}
+      {accessModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface-white rounded-2xl max-w-lg w-full border border-outline-variant shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-outline-variant bg-amber-50/40">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 border border-amber-200 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[22px]">key</span>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-headline-md text-primary truncate">Akses Portal Client</h3>
+                    <p className="text-xs text-text-muted mt-0.5 truncate">
+                      {accessModal.businessName} · login di <code className="font-mono">/kelola</code>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAccessModal(null)}
+                  className="w-9 h-9 rounded-lg hover:bg-surface-container flex items-center justify-center cursor-pointer shrink-0"
+                >
+                  <span className="material-symbols-outlined text-text-muted">close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto">
+              {/* Daftar akun */}
+              <div>
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Daftar Akun</h4>
+                {accessLoading ? (
+                  <div className="py-8 text-center">
+                    <span className="material-symbols-outlined text-2xl text-text-muted animate-spin inline-block">progress_activity</span>
+                  </div>
+                ) : clientUsers.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-surface border border-dashed border-outline-variant text-center">
+                    <p className="text-xs text-text-muted">
+                      Belum ada akun. Buat akun pertama di bawah supaya client bisa login ke portal.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {clientUsers.map((u) => (
+                      <div key={u.id} className="p-3 rounded-xl bg-surface border border-outline-variant flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-primary truncate">{u.email}</p>
+                          <p className="text-[10px] text-text-muted">
+                            {u.last_login_at
+                              ? `Login terakhir: ${new Date(u.last_login_at).toLocaleString("id-ID")}`
+                              : "Belum pernah login"}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => { setResetTarget(u); setResetPassword(""); }}
+                            className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] cursor-pointer"
+                            title="Reset Password"
+                          >
+                            <span className="material-symbols-outlined text-[14px] text-[#5C564A]">password</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClientUser(u)}
+                            disabled={accessSubmitting}
+                            className="p-1.5 rounded-lg bg-surface-container hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                            title="Hapus Akun"
+                          >
+                            <span className="material-symbols-outlined text-[14px] text-red-500">delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Reset password inline */}
+              {resetTarget && (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3">
+                  <p className="text-xs font-bold text-amber-800">
+                    Reset password untuk: <span className="font-mono">{resetTarget.email}</span>
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      placeholder="Password baru (min 6 karakter)"
+                      className="flex-1 bg-surface-white border border-amber-200 rounded-xl px-3.5 py-2 text-sm font-bold text-primary focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      onClick={handleResetClientUserPassword}
+                      disabled={accessSubmitting}
+                      className="px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 disabled:opacity-60 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      onClick={() => { setResetTarget(null); setResetPassword(""); }}
+                      className="px-3 py-2 rounded-xl bg-surface-white border border-amber-200 text-xs font-bold text-amber-700 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Form buat akun baru */}
+              <div className="p-4 rounded-xl bg-surface border border-outline-variant space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wide">Buat Akun Baru</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="email"
+                    value={accessForm.email}
+                    onChange={(e) => setAccessForm({ ...accessForm, email: e.target.value })}
+                    placeholder="email@client.com"
+                    className="w-full bg-surface-white border border-outline-variant rounded-xl px-3.5 py-2 text-sm font-bold text-primary focus:outline-none focus:border-primary"
+                  />
+                  <input
+                    type="text"
+                    value={accessForm.password}
+                    onChange={(e) => setAccessForm({ ...accessForm, password: e.target.value })}
+                    placeholder="Password (min 6 karakter)"
+                    className="w-full bg-surface-white border border-outline-variant rounded-xl px-3.5 py-2 text-sm font-bold text-primary focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <button
+                  onClick={handleCreateClientUser}
+                  disabled={accessSubmitting || !accessForm.email.trim() || !accessForm.password}
+                  className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-black disabled:opacity-60 cursor-pointer"
+                >
+                  {accessSubmitting ? "Menyimpan..." : "➕ Buat Akun"}
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-primary/[0.03] border border-primary/10">
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  Akun ini hanya bisa mengelola <span className="font-bold text-primary">{accessModal.businessName}</span> (menu, wifi, jam operasional, logo) via portal <code className="font-mono">/kelola</code>. Tidak ada akses ke kartu NFC, client lain, atau data admin.
+                </p>
               </div>
             </div>
           </div>
