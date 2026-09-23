@@ -1162,11 +1162,13 @@ export default function AdminDashboard({
     const qrCanvas = document.createElement("canvas");
     await QRCode.toCanvas(qrCanvas, url, { width: size, margin: 2 });
 
-    const pad = Math.round(size * 0.05);
-    const fontSize = Math.round(size * 0.1);
-    const captionH = fontSize + pad * 2;
+    const sidePad = Math.round(size * 0.03);
+    const gap = Math.round(size * 0.015);
+    const fontSize = Math.round(size * 0.045);
+    const bottomPad = Math.round(size * 0.015);
+    const captionH = gap + fontSize + bottomPad;
     const out = document.createElement("canvas");
-    out.width = qrCanvas.width + pad * 2;
+    out.width = qrCanvas.width + sidePad * 2;
     out.height = qrCanvas.height + captionH;
 
     const ctx = out.getContext("2d");
@@ -1174,13 +1176,13 @@ export default function AdminDashboard({
 
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, out.width, out.height);
-    ctx.drawImage(qrCanvas, pad, 0);
+    ctx.drawImage(qrCanvas, sidePad, 0);
 
     ctx.fillStyle = "#171717";
-    ctx.font = `bold ${fontSize}px "Courier New", ui-monospace, monospace`;
+    ctx.font = `600 ${fontSize}px "Courier New", ui-monospace, monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(cardId, out.width / 2, qrCanvas.height + captionH / 2);
+    ctx.fillText(cardId, out.width / 2, qrCanvas.height + gap + fontSize / 2);
 
     return out.toDataURL("image/png");
   }
