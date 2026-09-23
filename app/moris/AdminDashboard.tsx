@@ -1053,7 +1053,7 @@ export default function AdminDashboard({
 
       for (const item of generatedList) {
         try {
-          const qrDataUrl = await QRCode.toDataURL(item.url, { width: 600, margin: 2 });
+          const qrDataUrl = await generateCardQr(item.url, item.card_id);
           item.qrDataUrl = qrDataUrl;
         } catch (err) {
           console.error("QR generation error:", err);
@@ -1157,6 +1157,34 @@ export default function AdminDashboard({
     setTimeout(() => setCopiedCardId(null), 2000);
   }
 
+  // Generate QR code PNG dengan caption Card ID di bawahnya
+  async function generateCardQr(url: string, cardId: string, size = 600): Promise<string> {
+    const qrCanvas = document.createElement("canvas");
+    await QRCode.toCanvas(qrCanvas, url, { width: size, margin: 2 });
+
+    const pad = Math.round(size * 0.05);
+    const fontSize = Math.round(size * 0.1);
+    const captionH = fontSize + pad * 2;
+    const out = document.createElement("canvas");
+    out.width = qrCanvas.width + pad * 2;
+    out.height = qrCanvas.height + captionH;
+
+    const ctx = out.getContext("2d");
+    if (!ctx) return qrCanvas.toDataURL("image/png");
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(qrCanvas, pad, 0);
+
+    ctx.fillStyle = "#171717";
+    ctx.font = `bold ${fontSize}px "Courier New", ui-monospace, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(cardId, out.width / 2, qrCanvas.height + captionH / 2);
+
+    return out.toDataURL("image/png");
+  }
+
   function downloadSingleQr(item: GeneratedCardItem) {
     if (!item.qrDataUrl) return;
     const a = document.createElement("a");
@@ -1183,7 +1211,7 @@ export default function AdminDashboard({
       for (const card of groupCards) {
         try {
           const url = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
-          const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 2 });
+          const qrDataUrl = await generateCardQr(url, card.card_id);
           const a = document.createElement("a");
           a.href = qrDataUrl;
           a.download = `${slug}-${card.card_id}.png`;
@@ -1204,7 +1232,7 @@ export default function AdminDashboard({
   async function handleDownloadCompanyCardQr(card: CardData) {
     try {
       const url = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
-      const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 2 });
+      const qrDataUrl = await generateCardQr(url, card.card_id);
       const a = document.createElement("a");
       a.href = qrDataUrl;
       a.download = `${card.card_id}.png`;
@@ -1574,7 +1602,7 @@ export default function AdminDashboard({
                               <div className="flex items-center justify-end space-x-2">
                                 <button
                                   onClick={async () => {
-                                    const qrDataUrl = await QRCode.toDataURL(nfcUrl, { width: 600, margin: 2 });
+                                    const qrDataUrl = await generateCardQr(nfcUrl, card.card_id);
                                     setQrPreviewModal({ cardId: card.card_id, url: nfcUrl, qrDataUrl });
                                   }}
                                   className="bg-surface-white border border-outline-variant hover:bg-surface-container-low text-primary text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 cursor-pointer"
