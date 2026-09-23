@@ -1,5 +1,5 @@
 # Product Requirements Document
-## UlasIN (Kartu Review Google NFC + QR) — Alat Aktivasi Review Otomatis untuk UMKM
+## Ratey (Kartu Review Google NFC + QR) — Alat Aktivasi Review Otomatis untuk UMKM
 
 **Versi:** 1.0
 **Tanggal:** 18 Agustus 2026

@@ -256,7 +256,7 @@ export default function EditForm({
         {/* Header Section */}
         <div className="flex flex-col gap-2">
           <h1 className="text-headline-lg-mobile font-headline-lg-mobile text-on-surface">Dashboard Kartu Saya</h1>
-          <p className="text-body-sm font-body-sm text-on-surface-variant">Kelola pengaturan perangkat UlasIN Anda.</p>
+          <p className="text-body-sm font-body-sm text-on-surface-variant">Kelola pengaturan perangkat Ratey Anda.</p>
         </div>
 
         {/* Alert Notification */}
