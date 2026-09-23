@@ -132,11 +132,46 @@ export async function POST(req: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // 2B. DELETE COMPANY BATCH (semua kartu dalam satu batch perusahaan)
+    // ─────────────────────────────────────────────────────────────────────
+    if (action === "delete_company_batch") {
+      const batch = String(body?.batchLabel || "").trim();
+      if (!batch) {
+        return NextResponse.json({ error: "Nama perusahaan wajib diisi." }, { status: 400 });
+      }
+
+      const { error } = await supabase
+        .from("cards")
+        .delete()
+        .eq("order_type", "khusus")
+        .eq("batch_label", batch);
+
+      if (error) {
+        console.error("delete_company_batch error:", error.message);
+        return NextResponse.json({ error: "Gagal menghapus batch perusahaan." }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: `Batch perusahaan "${batch}" berhasil dihapus.`,
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // 3. INSTANT GENERATE CARDS FROM BROWSER
     // ─────────────────────────────────────────────────────────────────────
     if (action === "generate") {
-      const cardCount = Math.min(Math.max(Number(count) || 1, 1), 50);
-      const generatedCards: Array<{ card_id: string; url: string }> = [];
+      const cardCount = Math.min(Math.max(Number(count) || 1, 1), 500);
+      // Batch Perusahaan: label nama perusahaan + tipe order (khusus=borongan / umum)
+      const batchLabel = String(body?.batchLabel || "").trim().slice(0, 60) || null;
+      const orderType = body?.orderType === "khusus" ? "khusus" : "umum";
+      if (orderType === "khusus" && !batchLabel) {
+        return NextResponse.json(
+          { error: "Nama perusahaan wajib diisi untuk kartu tipe Perusahaan." },
+          { status: 400 }
+        );
+      }
+      const generatedCards: Array<{ card_id: string; url: string; batch_label: string | null; order_type: string }> = [];
 
       for (let i = 0; i < cardCount; i++) {
         let newId = generateCardId();
@@ -158,7 +193,9 @@ export async function POST(req: NextRequest) {
           existing = check.data;
         }
 
-        const { error } = await supabase.from("cards").insert({ card_id: newId });
+        const { error } = await supabase
+          .from("cards")
+          .insert({ card_id: newId, batch_label: batchLabel, order_type: orderType });
         if (error) {
           console.error(`Gagal insert card ${newId}:`, error.message);
           continue;
@@ -167,12 +204,14 @@ export async function POST(req: NextRequest) {
         generatedCards.push({
           card_id: newId,
           url: `${baseUrl}/c/${newId}`,
+          batch_label: batchLabel,
+          order_type: orderType,
         });
       }
 
       return NextResponse.json({
         ok: true,
-        message: `Berhasil men-generate ${generatedCards.length} kartu baru.`,
+        message: `Berhasil men-generate ${generatedCards.length} kartu baru${batchLabel ? ` untuk ${batchLabel}` : ""}.`,
         generatedCards,
       });
     }

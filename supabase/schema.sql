@@ -166,3 +166,12 @@ alter table clients
 -- Bentuk: [{label, ssid, password, from, to}]
 alter table clients
   add column if not exists wifi_zones jsonb not null default '[]'::jsonb;
+
+-- BATCH KARTU PERUSAHAAN: kartu NFC review yang dipesan borongan oleh
+-- perusahaan (mis. "Kebab Baba Rafi" 30 kartu untuk banyak cabang).
+-- batch_label = nama perusahaan (null = penjualan umum),
+-- order_type  = 'khusus' (borongan perusahaan) | 'umum' (default).
+-- Aktivasi kartu tetap manual oleh perusahaan (nama bisnis per cabang bisa beda).
+alter table cards
+  add column if not exists batch_label text,
+  add column if not exists order_type text not null default 'umum';

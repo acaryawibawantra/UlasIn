@@ -11,6 +11,8 @@ type CardData = {
   is_active: boolean;
   created_at: string;
   activated_at: string | null;
+  batch_label?: string | null;
+  order_type?: string | null;
 };
 
 type TableQrData = {
@@ -25,6 +27,8 @@ type GeneratedCardItem = {
   card_id: string;
   url: string;
   qrDataUrl?: string;
+  batch_label?: string | null;
+  order_type?: string | null;
 };
 
 type GeneratedTableItem = {
@@ -193,10 +197,9 @@ export default function AdminDashboard({
   secretKey: string;
   onLogout: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"standard" | "custom_tables" | "clients_templates">("standard");
+  const [activeTab, setActiveTab] = useState<"standard" | "custom_tables" | "clients_templates" | "company_cards">("standard");
 
   const [cards, setCards] = useState<CardData[]>([]);
-  const [stats, setStats] = useState({ totalCount: 0, activeCount: 0, inactiveCount: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -344,6 +347,7 @@ export default function AdminDashboard({
     | { type: "reset" | "delete"; cardId: string }
     | { type: "delete_table"; tableId: number; tableNum: string }
     | { type: "delete_client_batch"; clientSlug: string }
+    | { type: "delete_company_batch"; batchLabel: string; count: number }
     | { type: "delete_client"; clientSlug: string; clientName: string }
     | { type: "delete_menu_category"; id: number; label: string }
     | { type: "delete_menu_item"; id: number; name: string }
@@ -356,6 +360,15 @@ export default function AdminDashboard({
   const [generateCount, setGenerateCount] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [newGeneratedCards, setNewGeneratedCards] = useState<GeneratedCardItem[]>([]);
+  // Tipe penjualan kartu: umum vs khusus (perusahaan/borongan)
+  const [generateOrderType, setGenerateOrderType] = useState<"umum" | "khusus">("umum");
+  const [batchLabel, setBatchLabel] = useState("");
+
+  // Tab Kartu Perusahaan
+  const [companySearch, setCompanySearch] = useState("");
+  const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
+  const [batchQrLoadingLabel, setBatchQrLoadingLabel] = useState<string | null>(null);
+  const [batchDeleteLoadingLabel, setBatchDeleteLoadingLabel] = useState<string | null>(null);
 
   // Custom Table QR Generator States
   const [customClientSlug, setCustomClientSlug] = useState("tammmu");
@@ -399,7 +412,6 @@ export default function AdminDashboard({
       }
 
       setCards(data.cards || []);
-      setStats(data.stats || { totalCount: 0, activeCount: 0, inactiveCount: 0 });
       setTableQrs(data.tableQrs || []);
       setTableQrStats({
         totalTables: data.tableQrStats?.totalTables || 0,
@@ -480,6 +492,26 @@ export default function AdminDashboard({
       alert("Terjadi kesalahan koneksi.");
     } finally {
       setTableActionLoadingId(null);
+    }
+  }
+
+  async function handleCompanyBatchDelete(batchLabel: string) {
+    setBatchDeleteLoadingLabel(batchLabel);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "delete_company_batch", batchLabel }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Gagal menghapus batch perusahaan."); return; }
+      if (expandedBatch === batchLabel) setExpandedBatch(null);
+      fetchCards();
+      setConfirmModal(null);
+    } catch (err) {
+      alert("Terjadi kesalahan koneksi.");
+    } finally {
+      setBatchDeleteLoadingLabel(null);
     }
   }
 
@@ -991,13 +1023,23 @@ export default function AdminDashboard({
 
   async function handleGenerateCards(e: React.FormEvent) {
     e.preventDefault();
+    if (generateOrderType === "khusus" && !batchLabel.trim()) {
+      alert("Nama perusahaan wajib diisi untuk tipe kartu Perusahaan.");
+      return;
+    }
     setIsGenerating(true);
     setErrorMsg("");
     try {
       const res = await fetch("/api/admin/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secretKey, action: "generate", count: generateCount }),
+        body: JSON.stringify({
+          secretKey,
+          action: "generate",
+          count: generateCount,
+          orderType: generateOrderType,
+          batchLabel: generateOrderType === "khusus" ? batchLabel.trim() : "",
+        }),
       });
 
       const data = await res.json();
@@ -1133,6 +1175,47 @@ export default function AdminDashboard({
     });
   }
 
+  // Download semua QR kartu dalam satu batch perusahaan (filename berlabel)
+  async function handleDownloadBatchQr(label: string, groupCards: CardData[]) {
+    setBatchQrLoadingLabel(label);
+    try {
+      const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "perusahaan";
+      for (const card of groupCards) {
+        try {
+          const url = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
+          const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 2 });
+          const a = document.createElement("a");
+          a.href = qrDataUrl;
+          a.download = `${slug}-${card.card_id}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          await new Promise((r) => setTimeout(r, 150));
+        } catch (err) {
+          console.error("QR batch error:", err);
+        }
+      }
+    } finally {
+      setBatchQrLoadingLabel(null);
+    }
+  }
+
+  // Download QR satu kartu perusahaan
+  async function handleDownloadCompanyCardQr(card: CardData) {
+    try {
+      const url = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
+      const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 2 });
+      const a = document.createElement("a");
+      a.href = qrDataUrl;
+      a.download = `${card.card_id}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("QR single company card error:", err);
+    }
+  }
+
   function downloadSingleTableQr(table: GeneratedTableItem, clientSlugOverride?: string) {
     const a = document.createElement("a");
     a.href = table.qrDataUrl;
@@ -1168,8 +1251,31 @@ export default function AdminDashboard({
     }
   }
 
-  // Filtered Cards
-  const filteredCards = cards.filter((c) => {
+  // Derived: pisahkan kartu umum vs kartu perusahaan (batch khusus)
+  const generalCards = cards.filter((c) => (c.order_type || "umum") !== "khusus");
+  const companyCards = cards.filter((c) => c.order_type === "khusus");
+
+  // Group kartu perusahaan by batch_label (terbaru dulu)
+  const companyGroups = Array.from(
+    companyCards.reduce((map, c) => {
+      const label = c.batch_label || "Tanpa Label";
+      if (!map.has(label)) map.set(label, []);
+      map.get(label)!.push(c);
+      return map;
+    }, new Map<string, CardData[]>())
+  )
+    .map(([label, list]) => ({
+      label,
+      cards: [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    }))
+    .sort((a, b) => new Date(b.cards[0]?.created_at || 0).getTime() - new Date(a.cards[0]?.created_at || 0).getTime());
+
+  const filteredCompanyGroups = companySearch
+    ? companyGroups.filter((g) => g.label.toLowerCase().includes(companySearch.toLowerCase()))
+    : companyGroups;
+
+  // Filtered Cards (hanya kartu umum)
+  const filteredCards = generalCards.filter((c) => {
     const matchesSearch =
       c.card_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.business_name && c.business_name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -1199,6 +1305,15 @@ export default function AdminDashboard({
               }`}
           >
             💳 Kartu Direct Maps
+          </button>
+          <button
+            onClick={() => setActiveTab("company_cards")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === "company_cards"
+                ? "bg-primary text-surface-white shadow-sm"
+                : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high"
+              }`}
+          >
+            🏷️ Kartu Perusahaan
           </button>
           <button
             onClick={() => setActiveTab("custom_tables")}
@@ -1238,23 +1353,33 @@ export default function AdminDashboard({
           <div className="flex items-center space-x-4 mb-4 md:mb-0">
             <div className="w-12 h-12 bg-primary text-surface-white rounded-lg flex items-center justify-center">
               <span className="material-symbols-outlined text-2xl">
-                {activeTab === "standard" ? "bolt" : activeTab === "custom_tables" ? "qr_code_2" : "storefront"}
+                {activeTab === "standard"
+                  ? "bolt"
+                  : activeTab === "company_cards"
+                    ? "storefront"
+                    : activeTab === "custom_tables"
+                      ? "qr_code_2"
+                      : "business_center"}
               </span>
             </div>
             <div>
               <h1 className="text-headline-md font-headline-md text-primary">
                 {activeTab === "standard"
                   ? "Management Kartu Ratey Direct"
-                  : activeTab === "custom_tables"
-                    ? "Generator Barcode Meja Custom"
-                    : "Clients & Templates All-In-One"}
+                  : activeTab === "company_cards"
+                    ? "Kartu Review Perusahaan"
+                    : activeTab === "custom_tables"
+                      ? "Generator Barcode Meja Custom"
+                      : "Clients & Templates All-In-One"}
               </h1>
               <p className="text-body-sm font-body-sm text-text-muted mt-0.5">
                 {activeTab === "standard"
                   ? "Kelola Kartu NFC & QR Direct Google Reviews"
-                  : activeTab === "custom_tables"
-                    ? "Generate Batch Barcode Meja untuk Client Cafe & Resto"
-                    : "Buat Client Baru + Setting Branding + Menu WiFi Rating (5 menit jadi!)"}
+                  : activeTab === "company_cards"
+                    ? "Batch Kartu Borongan Perusahaan, Dikelompokkan per Nama Perusahaan"
+                    : activeTab === "custom_tables"
+                      ? "Generate Batch Barcode Meja untuk Client Cafe & Resto"
+                      : "Buat Client Baru + Setting Branding + Menu WiFi Rating (5 menit jadi!)"}
               </p>
             </div>
           </div>
@@ -1267,6 +1392,13 @@ export default function AdminDashboard({
                 }`}
             >
               Direct Cards
+            </button>
+            <button
+              onClick={() => setActiveTab("company_cards")}
+              className={`shrink-0 py-2 px-3 rounded-lg text-[11px] font-bold border ${activeTab === "company_cards" ? "bg-primary text-white border-primary" : "bg-white border-outline-variant text-text-muted"
+                }`}
+            >
+              Kartu Perusahaan
             </button>
             <button
               onClick={() => setActiveTab("custom_tables")}
@@ -1291,18 +1423,18 @@ export default function AdminDashboard({
             {/* Summary Stats Bento Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter mb-stack-md">
               <div className="bg-surface-white border border-outline-variant rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <p className="text-label-caps font-label-caps text-text-muted mb-2 uppercase">TOTAL KARTU DIRECT</p>
-                <p className="text-headline-lg font-headline-lg text-primary">{stats.totalCount}</p>
+                <p className="text-label-caps font-label-caps text-text-muted mb-2 uppercase">TOTAL KARTU UMUM</p>
+                <p className="text-headline-lg font-headline-lg text-primary">{generalCards.length}</p>
               </div>
 
               <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
                 <p className="text-label-caps font-label-caps text-[#166534] mb-2 uppercase">KARTU AKTIF (TERHUBUNG)</p>
-                <p className="text-headline-lg font-headline-lg text-[#166534]">{stats.activeCount}</p>
+                <p className="text-headline-lg font-headline-lg text-[#166534]">{generalCards.filter((c) => c.is_active).length}</p>
               </div>
 
               <div className="bg-[#FEF2F2] border border-[#FCA5A5] rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
                 <p className="text-label-caps font-label-caps text-[#991B1B] mb-2 uppercase">KARTU BELUM AKTIF</p>
-                <p className="text-headline-lg font-headline-lg text-[#991B1B]">{stats.inactiveCount}</p>
+                <p className="text-headline-lg font-headline-lg text-[#991B1B]">{generalCards.filter((c) => !c.is_active).length}</p>
               </div>
             </div>
 
@@ -1310,6 +1442,8 @@ export default function AdminDashboard({
             <div className="flex flex-col md:flex-row gap-gutter justify-between items-stretch md:items-center mb-stack-md">
               <button
                 onClick={() => {
+                  setGenerateOrderType("umum");
+                  setBatchLabel("");
                   setNewGeneratedCards([]);
                   setShowGenerateModal(true);
                 }}
@@ -1478,6 +1612,191 @@ export default function AdminDashboard({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* TAB 3: KARTU PERUSAHAAN (BATCH BORONGAN) */}
+        {activeTab === "company_cards" && (
+          <div>
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter mb-stack-md">
+              <div className="bg-surface-white border border-outline-variant rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <p className="text-label-caps font-label-caps text-text-muted mb-2 uppercase">TOTAL PERUSAHAAN</p>
+                <p className="text-headline-lg font-headline-lg text-primary">{companyGroups.length}</p>
+              </div>
+              <div className="bg-surface-white border border-outline-variant rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <p className="text-label-caps font-label-caps text-text-muted mb-2 uppercase">TOTAL KARTU PERUSAHAAN</p>
+                <p className="text-headline-lg font-headline-lg text-primary">{companyCards.length}</p>
+              </div>
+              <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <p className="text-label-caps font-label-caps text-[#166534] mb-2 uppercase">KARTU AKTIF</p>
+                <p className="text-headline-lg font-headline-lg text-[#166534]">{companyCards.filter((c) => c.is_active).length}</p>
+              </div>
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex flex-col md:flex-row gap-gutter justify-between items-stretch md:items-center mb-stack-md">
+              <button
+                onClick={() => {
+                  setGenerateOrderType("khusus");
+                  setNewGeneratedCards([]);
+                  setShowGenerateModal(true);
+                }}
+                className="bg-cta-activation text-on-primary font-label-bold text-label-bold px-6 py-3 rounded-xl hover:brightness-110 transition-all flex items-center justify-center space-x-2 shadow-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-lg">add_business</span>
+                <span>+ Generate Batch Kartu Perusahaan</span>
+              </button>
+
+              <div className="relative flex-1 md:w-80">
+                <input
+                  type="text"
+                  placeholder="Cari nama perusahaan..."
+                  value={companySearch}
+                  onChange={(e) => setCompanySearch(e.target.value)}
+                  className="w-full bg-surface-white border border-outline-variant rounded-xl px-4 py-2.5 pl-10 text-body-sm font-body-sm focus:outline-none focus:border-primary transition-colors"
+                />
+                <span className="material-symbols-outlined absolute left-3 top-3 text-text-muted text-lg">search</span>
+              </div>
+            </div>
+
+            {/* Grouped Batch List */}
+            {isLoading ? (
+              <div className="bg-surface-white border border-outline-variant rounded-xl p-12 text-center text-text-muted">
+                <span className="material-symbols-outlined text-3xl animate-spin mb-2 block">sync</span>
+                <p className="text-body-sm font-body-sm">Memuat data kartu perusahaan...</p>
+              </div>
+            ) : filteredCompanyGroups.length === 0 ? (
+              <div className="bg-surface-white border border-outline-variant rounded-xl p-12 text-center text-text-muted">
+                <span className="material-symbols-outlined text-4xl mb-2 block">storefront</span>
+                <p className="text-body-sm font-body-sm">
+                  {companyGroups.length === 0
+                    ? "Belum ada kartu perusahaan. Generate batch pertama lewat tombol di atas."
+                    : "Tidak ada perusahaan yang cocok dengan pencarian."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-stack-sm">
+                {filteredCompanyGroups.map((group) => {
+                  const isExpanded = expandedBatch === group.label;
+                  const activeInGroup = group.cards.filter((c) => c.is_active).length;
+                  const isBatchLoading = batchQrLoadingLabel === group.label;
+                  const isDeleteLoading = batchDeleteLoadingLabel === group.label;
+                  return (
+                    <div key={group.label} className="bg-surface-white border border-outline-variant rounded-xl overflow-hidden shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+                      <div className="p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <button
+                          onClick={() => setExpandedBatch(isExpanded ? null : group.label)}
+                          className="flex items-center gap-3 text-left cursor-pointer flex-1"
+                        >
+                          <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined">storefront</span>
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-primary text-body-md font-headline-md">{group.label}</h3>
+                            <p className="text-[11px] text-text-muted mt-0.5">
+                              {group.cards.length} kartu · {activeInGroup} aktif · {group.cards.length - activeInGroup} belum aktif
+                              {group.cards[0]?.created_at && (
+                                <> · dibuat {new Date(group.cards[0].created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}</>
+                              )}
+                            </p>
+                          </div>
+                          <span className={`material-symbols-outlined text-text-muted ml-auto transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                            expand_more
+                          </span>
+                        </button>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleDownloadBatchQr(group.label, group.cards)}
+                            disabled={isBatchLoading}
+                            className="px-3 py-2 bg-primary text-surface-white rounded-lg text-[11px] font-bold hover:bg-black transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+                          >
+                            <span className="material-symbols-outlined text-sm">{isBatchLoading ? "sync" : "download"}</span>
+                            <span>{isBatchLoading ? "Mengunduh..." : "Download Semua QR"}</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setGenerateOrderType("khusus");
+                              setBatchLabel(group.label);
+                              setNewGeneratedCards([]);
+                              setShowGenerateModal(true);
+                            }}
+                            className="px-3 py-2 border border-outline-variant rounded-lg text-[11px] font-bold text-on-surface-variant hover:bg-surface-container transition-all cursor-pointer flex items-center gap-1.5"
+                            title="Tambah kartu baru untuk batch ini"
+                          >
+                            <span className="material-symbols-outlined text-sm">add</span>
+                            <span>Tambah</span>
+                          </button>
+                          <button
+                            onClick={() =>
+                              setConfirmModal({
+                                type: "delete_company_batch",
+                                batchLabel: group.label,
+                                count: group.cards.length,
+                              })
+                            }
+                            disabled={isDeleteLoading}
+                            className="px-3 py-2 border border-[#FCA5A5] rounded-lg text-[11px] font-bold text-[#991B1B] hover:bg-[#FEF2F2] transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+                            title="Hapus seluruh batch perusahaan ini"
+                          >
+                            <span className="material-symbols-outlined text-sm">{isDeleteLoading ? "sync" : "delete"}</span>
+                            <span>Hapus Batch</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="border-t border-outline-variant bg-surface/50">
+                          <div className="max-h-96 overflow-y-auto divide-y divide-outline-variant">
+                            {group.cards.map((card) => {
+                              const reviewUrl = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
+                              const isCopied = copiedCardId === card.card_id;
+                              return (
+                                <div key={card.card_id} className="px-4 md:px-5 py-3 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${card.is_active ? "bg-[#22C55E]" : "bg-[#EF4444]"}`} />
+                                    <div className="min-w-0">
+                                      <span className="font-mono font-bold text-primary text-body-sm block">{card.card_id}</span>
+                                      <span className="text-[11px] text-text-muted truncate block max-w-[220px]">
+                                        {card.is_active ? (card.business_name || "Aktif") : "Belum diaktivasi"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      onClick={() => handleCopyText(reviewUrl, card.card_id)}
+                                      className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] text-[#5C564A] transition-colors cursor-pointer"
+                                      title="Copy link"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">{isCopied ? "check" : "content_copy"}</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleDownloadCompanyCardQr(card)}
+                                      className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] text-primary transition-colors cursor-pointer"
+                                      title="Download QR"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">download</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmModal({ type: "delete", cardId: card.card_id })}
+                                      className="p-1.5 rounded-lg bg-surface-container hover:bg-red-50 text-red-500 transition-colors cursor-pointer"
+                                      title="Hapus kartu"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -2502,11 +2821,54 @@ export default function AdminDashboard({
                 </p>
 
                 <div>
+                  <label className="block text-label-bold font-label-bold text-primary mb-1.5">Tipe Penjualan Kartu</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGenerateOrderType("umum")}
+                      className={`py-2.5 rounded-xl text-label-bold font-label-bold border transition-all cursor-pointer ${generateOrderType === "umum"
+                          ? "bg-primary text-surface-white border-primary"
+                          : "bg-surface border-outline-variant text-on-surface-variant hover:bg-surface-container"
+                        }`}
+                    >
+                      Umum (Retail)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGenerateOrderType("khusus")}
+                      className={`py-2.5 rounded-xl text-label-bold font-label-bold border transition-all cursor-pointer ${generateOrderType === "khusus"
+                          ? "bg-primary text-surface-white border-primary"
+                          : "bg-surface border-outline-variant text-on-surface-variant hover:bg-surface-container"
+                        }`}
+                    >
+                      Perusahaan (Borongan)
+                    </button>
+                  </div>
+                </div>
+
+                {generateOrderType === "khusus" && (
+                  <div>
+                    <label className="block text-label-bold font-label-bold text-primary mb-1.5">Nama Perusahaan</label>
+                    <input
+                      type="text"
+                      value={batchLabel}
+                      onChange={(e) => setBatchLabel(e.target.value)}
+                      placeholder="mis. Kebab Baba Rafi"
+                      maxLength={60}
+                      className="w-full bg-surface border border-outline-variant rounded-xl px-4 py-2.5 text-body-sm font-bold text-primary focus:outline-none focus:border-primary"
+                    />
+                    <p className="text-[11px] text-text-muted mt-1.5">
+                      Kartu akan dikelompokkan dalam batch ini. Aktivasi per cabang tetap manual.
+                    </p>
+                  </div>
+                )}
+
+                <div>
                   <label className="block text-label-bold font-label-bold text-primary mb-1.5">Jumlah Kartu Ditambahkan</label>
                   <input
                     type="number"
                     min={1}
-                    max={50}
+                    max={500}
                     value={generateCount}
                     onChange={(e) => setGenerateCount(parseInt(e.target.value) || 1)}
                     className="w-full bg-surface border border-outline-variant rounded-xl px-4 py-2.5 text-body-md font-bold text-primary focus:outline-none focus:border-primary"
@@ -2613,6 +2975,7 @@ export default function AdminDashboard({
         const isCardDelete = confirmModal.type === "delete";
         const isTableDelete = confirmModal.type === "delete_table";
         const isClientBatch = confirmModal.type === "delete_client_batch";
+        const isCompanyBatch = confirmModal.type === "delete_company_batch";
         const isClientDelete = confirmModal.type === "delete_client";
         const isCatDelete = confirmModal.type === "delete_menu_category";
         const isItemDelete = confirmModal.type === "delete_menu_item";
@@ -2661,6 +3024,14 @@ export default function AdminDashboard({
           confirmLabel = "Ya, Hapus Meja";
           confirmBtnClass = "bg-red-600 hover:bg-red-700";
           confirmAction = () => handleClientBatchDelete(confirmModal.clientSlug);
+        } else if (isCompanyBatch && "batchLabel" in confirmModal) {
+          headerColor = colorDanger;
+          icon = "delete_sweep";
+          title = "Hapus Batch Perusahaan Ini?";
+          description = `Semua ${confirmModal.count} kartu dalam batch "${confirmModal.batchLabel}" akan dihapus permanen dari database. Kartu yang sudah aktif pun ikut terhapus.`;
+          confirmLabel = "Ya, Hapus Batch";
+          confirmBtnClass = "bg-red-600 hover:bg-red-700";
+          confirmAction = () => handleCompanyBatchDelete(confirmModal.batchLabel);
         } else if (isClientDelete && "clientSlug" in confirmModal) {
           headerColor = colorDanger;
           icon = "delete_forever";
