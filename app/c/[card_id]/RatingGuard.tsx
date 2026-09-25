@@ -353,9 +353,9 @@ export default function RatingGuard({
           })}
         </div>
 
-        <p className="text-body-sm font-body-sm text-text-muted flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[16px]">lock</span>
-          <span>4-5 langsung ke Google Review · 1-3 ceritakan langsung ke kami</span>
+        <p className="text-body-sm font-body-sm text-text-muted flex items-center justify-center gap-1.5">
+          <span className="material-symbols-outlined text-[16px] leading-none shrink-0">lock</span>
+          <span className="text-center">4-5 langsung ke Google Review · 1-3 ceritakan langsung ke kami</span>
         </p>
       </main>
     </div>
