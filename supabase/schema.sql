@@ -175,3 +175,33 @@ alter table clients
 alter table cards
   add column if not exists batch_label text,
   add column if not exists order_type text not null default 'umum';
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- SISTEM GUARD RATING (filter review sebelum ke Google)
+-- rating_guard = true -> tap/scan kartu TIDAK langsung ke Google Maps,
+-- tapi masuk halaman rating Ratey dulu:
+--   - Bintang 4-5  -> auto-direct ke halaman Google Review
+--   - Bintang 1-3  -> user isi keluhan (tersimpan di card_feedback,
+--                     TIDAK diarahkan ke Google)
+-- Default false = perilaku lama (langsung redirect ke Google).
+-- ──────────────────────────────────────────────────────────────────────────────
+alter table cards
+  add column if not exists rating_guard boolean not null default false;
+
+-- Keluhan user dari halaman guard (hanya rating 1-3 yang dicatat).
+-- customer_name / customer_phone opsional (untuk follow-up oleh pemilik usaha).
+create table if not exists card_feedback (
+  id bigserial primary key,
+  card_id text not null references cards(card_id) on delete cascade,
+  rating int not null check (rating between 1 and 3),
+  message text not null,
+  customer_name text,
+  customer_phone text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_card_feedback_card on card_feedback (card_id);
+create index if not exists idx_card_feedback_created on card_feedback (created_at desc);
+
+-- RLS: tanpa policy — hanya server (service_role) yang bisa akses
+alter table card_feedback enable row level security;

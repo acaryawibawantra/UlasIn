@@ -9,19 +9,35 @@ type PlaceSuggestion = {
   description: string;
 };
 
+type FeedbackItem = {
+  id: number;
+  rating: number;
+  message: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  created_at: string;
+};
+
 export default function EditForm({
   cardId,
   currentBusinessName,
   googleReviewUrl,
+  ratingGuard,
 }: {
   cardId: string;
   currentBusinessName: string;
   googleReviewUrl?: string;
+  ratingGuard: boolean;
 }) {
   const router = useRouter();
 
   // Modal states
-  const [activeModal, setActiveModal] = useState<"link" | "pin" | null>(null);
+  const [activeModal, setActiveModal] = useState<"link" | "pin" | "guard" | "feedback" | null>(null);
+
+  // Rating Guard states
+  const [guardEnabled, setGuardEnabled] = useState(ratingGuard);
+  const [feedbackList, setFeedbackList] = useState<FeedbackItem[] | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   // Link edit state
   const [query, setQuery] = useState(currentBusinessName);
@@ -238,6 +254,99 @@ export default function EditForm({
     }
   }
 
+  // Toggle Sistem Guard Rating (verifikasi PIN)
+  async function handleSaveGuard(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const currentPin = currentPinDigits.join("");
+    if (!/^\d{4}$/.test(currentPin)) {
+      setErrorMsg("Masukkan 4 digit PIN Anda untuk verifikasi.");
+      return;
+    }
+
+    setStatus("saving");
+    try {
+      const res = await fetch("/api/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cardId,
+          pin: currentPin,
+          ratingGuard: !guardEnabled,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus("error");
+        setErrorMsg(data.error || "Gagal memperbarui guard rating.");
+        return;
+      }
+
+      setGuardEnabled(!guardEnabled);
+      setStatus("done");
+      setSuccessMsg(
+        !guardEnabled
+          ? "Sistem Guard Rating AKTIF — pelanggan akan beri bintang dulu sebelum diarahkan ke Google."
+          : "Sistem Guard Rating dimatikan — tap kartu langsung ke Google Review."
+      );
+      setActiveModal(null);
+      setCurrentPinDigits(["", "", "", ""]);
+    } catch (err) {
+      setStatus("error");
+      setErrorMsg("Terjadi kesalahan koneksi.");
+    }
+  }
+
+  // Buka daftar keluhan masuk (verifikasi PIN)
+  async function handleOpenFeedback(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorMsg("");
+
+    const currentPin = currentPinDigits.join("");
+    if (!/^\d{4}$/.test(currentPin)) {
+      setErrorMsg("Masukkan 4 digit PIN Anda untuk verifikasi.");
+      return;
+    }
+
+    setFeedbackLoading(true);
+    try {
+      const res = await fetch("/api/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId, pin: currentPin, action: "get_feedback" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || "Gagal memuat keluhan.");
+        return;
+      }
+
+      setFeedbackList(data.feedback || []);
+    } catch (err) {
+      setErrorMsg("Terjadi kesalahan koneksi.");
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }
+
+  function formatFeedbackDate(iso: string) {
+    try {
+      return new Date(iso).toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  }
+
   return (
     <div className="bg-surface-bright text-on-surface font-body-md antialiased min-h-screen pb-24">
       {/* TopAppBar Shared Component */}
@@ -327,6 +436,80 @@ export default function EditForm({
               bar_chart
             </span>
           </div>
+        </section>
+
+        {/* Sistem Guard Rating */}
+        <section className="bg-surface-white border border-outline-variant rounded-xl shadow-sm p-6 flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-full bg-secondary-container/10 flex items-center justify-center text-secondary shrink-0">
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  shield
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-label-bold font-label-bold text-on-surface">Sistem Guard Rating</span>
+                <p className="text-body-sm font-body-sm text-on-surface-variant">
+                  Pelanggan tap kartu → beri bintang dulu di Ratey. Bintang 4-5 langsung ke Google Review, bintang 1-3 masuk ke daftar keluhan.
+                </p>
+              </div>
+            </div>
+            <span
+              className={`text-label-caps font-label-caps px-2.5 py-1 rounded-md font-semibold shrink-0 ${
+                guardEnabled
+                  ? "bg-accent-green-bg text-cta-activation border border-accent-green-border"
+                  : "bg-surface-container text-text-muted border border-outline-variant"
+              }`}
+            >
+              {guardEnabled ? "AKTIF" : "OFF"}
+            </span>
+          </div>
+
+          <button
+            onClick={() => {
+              setActiveModal("guard");
+              setErrorMsg("");
+              setCurrentPinDigits(["", "", "", ""]);
+            }}
+            className={`w-full flex items-center justify-center gap-2 h-11 rounded-lg text-label-bold font-label-bold transition-colors cursor-pointer ${
+              guardEnabled
+                ? "bg-surface-white border border-outline-variant text-on-surface hover:bg-surface-container shadow-sm"
+                : "bg-primary text-on-primary hover:bg-on-surface"
+            }`}
+          >
+            <span className="material-symbols-outlined text-lg">{guardEnabled ? "shield_off" : "shield_lock"}</span>
+            <span>{guardEnabled ? "Matikan Guard" : "Aktifkan Guard"}</span>
+          </button>
+        </section>
+
+        {/* Keluhan Masuk (Rating Guard) */}
+        <section className="bg-surface-white border border-outline-variant rounded-xl shadow-sm p-6 flex flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 rounded-full bg-accent-red-bg flex items-center justify-center text-accent-red shrink-0">
+              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
+                inbox
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-label-bold font-label-bold text-on-surface">Keluhan Masuk</span>
+              <p className="text-body-sm font-body-sm text-on-surface-variant">
+                Keluhan pelanggan yang memberi rating 1-3 bintang (nama &amp; no. HP opsional untuk follow-up).
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setActiveModal("feedback");
+              setErrorMsg("");
+              setFeedbackList(null);
+              setCurrentPinDigits(["", "", "", ""]);
+            }}
+            className="w-full flex items-center justify-center gap-2 bg-surface-white border border-outline-variant text-on-surface h-11 rounded-lg text-label-bold font-label-bold hover:bg-surface-container transition-colors shadow-sm cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-lg">lock_open</span>
+            <span>Buka Keluhan (Masukkan PIN)</span>
+          </button>
         </section>
 
         {/* Quick Actions Stack */}
@@ -600,6 +783,231 @@ export default function EditForm({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TOGGLE GUARD RATING */}
+      {activeModal === "guard" && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-surface-white rounded-2xl p-6 max-w-md w-full animate-fade-in shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-headline-md font-headline-md text-primary">
+                {guardEnabled ? "Matikan Guard Rating?" : "Aktifkan Guard Rating?"}
+              </h3>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="text-on-surface-variant hover:text-primary text-xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-body-sm font-body-sm text-on-surface-variant mb-4">
+              {guardEnabled
+                ? "Setelah dimatikan, pelanggan yang tap kartu akan langsung diarahkan ke Google Review tanpa filter bintang."
+                : "Setelah diaktifkan, pelanggan yang tap kartu akan memberi bintang dulu di Ratey. Bintang 4-5 diarahkan ke Google Review, bintang 1-3 diminta mengisi keluhan yang masuk ke daftar Keluhan Masuk."}
+            </p>
+
+            <form onSubmit={handleSaveGuard} autoComplete="off" className="flex flex-col gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-label-bold font-label-bold text-on-surface block">
+                    Masukkan PIN 4 Digit (Verifikasi)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPin(!showCurrentPin)}
+                    className="text-xs text-secondary font-semibold"
+                  >
+                    {showCurrentPin ? "Sembunyikan" : "Lihat PIN"}
+                  </button>
+                </div>
+
+                <div className="pin-container my-2">
+                  {currentPinDigits.map((digit, idx) => (
+                    <input
+                      key={idx}
+                      ref={currentPinRefs[idx]}
+                      type={showCurrentPin ? "text" : "password"}
+                      autoComplete="new-password"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handlePinChange(currentPinDigits, setCurrentPinDigits, currentPinRefs, idx, e.target.value)}
+                      onKeyDown={(e) => handlePinKeyDown(currentPinDigits, currentPinRefs, idx, e)}
+                      onPaste={(e) => handlePinPaste(setCurrentPinDigits, currentPinRefs, e)}
+                      className={`pin-box ${digit ? "filled" : ""}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {errorMsg && (
+                <div className="bg-accent-red-bg border border-accent-red-border text-accent-red p-2.5 rounded-lg text-body-sm">
+                  ⚠️ {errorMsg}
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="flex-1 py-3 border border-outline-variant rounded-lg font-label-bold"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={status === "saving"}
+                  className={`flex-1 py-3 rounded-lg font-label-bold text-on-primary ${
+                    guardEnabled ? "bg-accent-red hover:brightness-110" : "bg-primary hover:bg-on-surface"
+                  }`}
+                >
+                  {status === "saving" ? "Menyimpan..." : guardEnabled ? "Matikan" : "Aktifkan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KELUHAN MASUK (PIN-gated) */}
+      {activeModal === "feedback" && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-surface-white rounded-2xl p-6 max-w-md w-full animate-fade-in shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-headline-md font-headline-md text-primary">Keluhan Masuk</h3>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="text-on-surface-variant hover:text-primary text-xl font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {feedbackList === null ? (
+              <form onSubmit={handleOpenFeedback} autoComplete="off" className="flex flex-col gap-4">
+                <p className="text-body-sm font-body-sm text-on-surface-variant">
+                  Masukkan PIN untuk melihat keluhan pelanggan (rating 1-3 bintang).
+                </p>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-label-bold font-label-bold text-on-surface block">
+                      PIN 4 Digit (Verifikasi)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPin(!showCurrentPin)}
+                      className="text-xs text-secondary font-semibold"
+                    >
+                      {showCurrentPin ? "Sembunyikan" : "Lihat PIN"}
+                    </button>
+                  </div>
+
+                  <div className="pin-container my-2">
+                    {currentPinDigits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={currentPinRefs[idx]}
+                        type={showCurrentPin ? "text" : "password"}
+                        autoComplete="new-password"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handlePinChange(currentPinDigits, setCurrentPinDigits, currentPinRefs, idx, e.target.value)}
+                        onKeyDown={(e) => handlePinKeyDown(currentPinDigits, currentPinRefs, idx, e)}
+                        onPaste={(e) => handlePinPaste(setCurrentPinDigits, currentPinRefs, e)}
+                        className={`pin-box ${digit ? "filled" : ""}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {errorMsg && (
+                  <div className="bg-accent-red-bg border border-accent-red-border text-accent-red p-2.5 rounded-lg text-body-sm">
+                    ⚠️ {errorMsg}
+                  </div>
+                )}
+
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveModal(null)}
+                    className="flex-1 py-3 border border-outline-variant rounded-lg font-label-bold"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={feedbackLoading}
+                    className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-bold hover:bg-on-surface"
+                  >
+                    {feedbackLoading ? "Memuat..." : "Buka Keluhan"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {feedbackList.length === 0 ? (
+                  <div className="text-center py-8 flex flex-col items-center gap-2">
+                    <span className="material-symbols-outlined text-4xl text-text-muted">inbox</span>
+                    <p className="text-body-sm font-body-sm text-on-surface-variant">
+                      Belum ada keluhan masuk. Bagus! 🎉
+                    </p>
+                  </div>
+                ) : (
+                  feedbackList.map((f) => (
+                    <div key={f.id} className="bg-surface-container-low border border-outline-variant rounded-xl p-4 flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-0.5">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <span
+                              key={i}
+                              className="material-symbols-outlined text-base"
+                              style={{
+                                color: i < f.rating ? "#F5A623" : undefined,
+                                fontVariationSettings: i < f.rating ? "'FILL' 1" : "'FILL' 0",
+                              }}
+                            >
+                              star
+                            </span>
+                          ))}
+                        </div>
+                        <span className="text-[11px] text-text-muted">{formatFeedbackDate(f.created_at)}</span>
+                      </div>
+
+                      <p className="text-body-sm font-body-sm text-on-surface whitespace-pre-wrap">{f.message}</p>
+
+                      {(f.customer_name || f.customer_phone) && (
+                        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-outline-variant/50">
+                          {f.customer_name && (
+                            <span className="text-[12px] text-on-surface-variant flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">person</span>
+                              {f.customer_name}
+                            </span>
+                          )}
+                          {f.customer_phone && (
+                            <a
+                              href={`https://wa.me/${f.customer_phone.replace(/\D/g, "").replace(/^0/, "62")}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[12px] text-secondary font-semibold flex items-center gap-1 hover:underline"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">call</span>
+                              {f.customer_phone}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

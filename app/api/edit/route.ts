@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { cardId, pin, newBusinessName, newPlaceId, newGoogleReviewUrl, newPin } = body || {};
+  const { cardId, pin, newBusinessName, newPlaceId, newGoogleReviewUrl, newPin, ratingGuard, action } = body || {};
 
   if (!cardId || !pin) {
     return NextResponse.json({ error: "Card ID dan PIN wajib diisi." }, { status: 400 });
@@ -30,7 +30,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "PIN yang Anda masukkan salah." }, { status: 401 });
   }
 
+  // Aksi khusus: ambil daftar keluhan masuk (Rating Guard) untuk kartu ini
+  if (action === "get_feedback") {
+    const { data: feedback, error: feedbackError } = await supabase
+      .from("card_feedback")
+      .select("id, rating, message, customer_name, customer_phone, created_at")
+      .eq("card_id", cardId.toUpperCase())
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (feedbackError) {
+      console.error("Gagal ambil keluhan:", feedbackError.message);
+      return NextResponse.json({ error: "Gagal memuat keluhan." }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, feedback: feedback || [] });
+  }
+
   const updates: Record<string, any> = {};
+
+  // Toggle sistem guard rating (bintang 4-5 -> Google, 1-3 -> keluhan)
+  if (typeof ratingGuard === "boolean") {
+    updates.rating_guard = ratingGuard;
+  }
 
   if (newBusinessName) {
     updates.business_name = newBusinessName.trim();

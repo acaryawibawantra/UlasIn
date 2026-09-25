@@ -112,6 +112,32 @@ export async function POST(req: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // 1B. TOGGLE RATING GUARD (admin set guard ON/OFF tanpa PIN kartu)
+    // ─────────────────────────────────────────────────────────────────────
+    if (action === "toggle_guard") {
+      if (!cardId) {
+        return NextResponse.json({ error: "Card ID wajib diisi." }, { status: 400 });
+      }
+
+      const newGuardState = !!body?.ratingGuard;
+
+      const { error } = await supabase
+        .from("cards")
+        .update({ rating_guard: newGuardState })
+        .eq("card_id", cardId.toUpperCase());
+
+      if (error) {
+        console.error("toggle_guard error:", error.message);
+        return NextResponse.json({ error: "Gagal mengubah guard rating. Pastikan SQL rating_guard sudah dijalankan." }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: `Guard rating kartu ${cardId} ${newGuardState ? "AKTIF" : "dimatikan"}.`,
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // 2. DELETE CARD
     // ─────────────────────────────────────────────────────────────────────
     if (action === "delete") {

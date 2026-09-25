@@ -16,7 +16,7 @@ export default async function EditPage({
 
   const { data: card, error } = await supabase
     .from("cards")
-    .select("card_id, business_name, google_review_url, is_active")
+    .select("card_id, business_name, google_review_url, is_active, rating_guard")
     .eq("card_id", cardId)
     .maybeSingle();
 
@@ -39,6 +39,7 @@ export default async function EditPage({
       cardId={cardId}
       currentBusinessName={card.business_name || ""}
       googleReviewUrl={card.google_review_url || ""}
+      ratingGuard={!!card.rating_guard}
     />
   );
 }

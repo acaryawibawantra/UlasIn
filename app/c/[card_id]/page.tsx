@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import ActivationForm from "./ActivationForm";
 import SmartRedirect from "./SmartRedirect";
+import RatingGuard from "./RatingGuard";
 
 // Pastikan halaman ini SELALU mengecek database terbaru (tanpa cache Next.js)
 // setiap kali kartu di-tap NFC / di-scan QR oleh siapapun.
@@ -31,16 +32,25 @@ export default async function CardPage({
     notFound();
   }
 
-  // Jika kartu sudah aktif -> CLIENT-SIDE SMART REDIRECT (coba buka App Maps native, fallback ke web)
+  // Guard ON -> pelanggan rating dulu di Ratey:
+  // bintang 4-5 auto-direct ke Google Review, bintang 1-3 isi keluhan.
+  if (card.is_active && card.google_review_url && card.rating_guard) {
+    return (
+      <RatingGuard
+        cardId={cardId}
+        businessName={card.business_name}
+        googleReviewUrl={card.google_review_url}
+        placeId={card.place_id}
+      />
+    );
+  }
+
+  // Guard OFF (default) -> CLIENT-SIDE SMART REDIRECT (coba buka App Maps native, fallback ke web)
   // Lebih tinggi kesempatan terbuka di App Maps Google (Android/iOS) ketimbang server redirect langsung.
   // Kesan user: hampir instan (layar polos sekedip, tanpa spinner / text loading).
   if (card.is_active && card.google_review_url) {
     return (
-      <SmartRedirect
-        googleReviewUrl={card.google_review_url}
-        placeId={card.place_id}
-        businessName={card.business_name}
-      />
+      <SmartRedirect googleReviewUrl={card.google_review_url} />
     );
   }
 

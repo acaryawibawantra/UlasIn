@@ -13,6 +13,19 @@ type CardData = {
   activated_at: string | null;
   batch_label?: string | null;
   order_type?: string | null;
+  rating_guard?: boolean | null;
+};
+
+// Keluhan pelanggan dari Rating Guard (hanya rating 1-3)
+type FeedbackData = {
+  id: number;
+  card_id: string;
+  rating: number;
+  message: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  created_at: string;
+  cards?: { business_name: string | null } | null;
 };
 
 type TableQrData = {
@@ -200,6 +213,7 @@ export default function AdminDashboard({
   const [activeTab, setActiveTab] = useState<"standard" | "custom_tables" | "clients_templates" | "company_cards">("standard");
 
   const [cards, setCards] = useState<CardData[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -412,6 +426,7 @@ export default function AdminDashboard({
       }
 
       setCards(data.cards || []);
+      setFeedback(data.feedback || []);
       setTableQrs(data.tableQrs || []);
       setTableQrStats({
         totalTables: data.tableQrStats?.totalTables || 0,
@@ -449,6 +464,28 @@ export default function AdminDashboard({
 
       fetchCards();
       setConfirmModal(null);
+    } catch (err) {
+      alert("Terjadi kesalahan koneksi.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  // Toggle guard rating kartu (admin, tanpa PIN kartu)
+  async function handleToggleGuard(cardId: string, nextGuard: boolean) {
+    setActionLoadingId(cardId);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "toggle_guard", cardId, ratingGuard: nextGuard }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Gagal mengubah guard rating.");
+        return;
+      }
+      fetchCards();
     } catch (err) {
       alert("Terjadi kesalahan koneksi.");
     } finally {
@@ -1527,17 +1564,25 @@ export default function AdminDashboard({
                             </td>
 
                             <td className="py-4 px-4 md:px-6">
-                              {card.is_active ? (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D]">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] mr-1.5 animate-pulse"></span>
-                                  Aktif
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-container-high text-on-surface-variant border border-outline-variant">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
-                                  Belum Aktif
-                                </span>
-                              )}
+                              <div className="flex flex-col items-start gap-1.5">
+                                {card.is_active ? (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-[#DCFCE7] text-[#15803D]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] mr-1.5 animate-pulse"></span>
+                                    Aktif
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-container-high text-on-surface-variant border border-outline-variant">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+                                    Belum Aktif
+                                  </span>
+                                )}
+                                {card.rating_guard ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]" title="Rating Guard aktif: bintang 4-5 ke Google, 1-3 isi keluhan">
+                                    <span className="material-symbols-outlined text-[12px]">shield</span>
+                                    Guard ON
+                                  </span>
+                                ) : null}
+                              </div>
                             </td>
 
                             <td className="py-4 px-4 md:px-6">
@@ -1585,6 +1630,22 @@ export default function AdminDashboard({
 
                                 {card.is_active && (
                                   <button
+                                    onClick={() => handleToggleGuard(card.card_id, !card.rating_guard)}
+                                    disabled={actionLoadingId === card.card_id}
+                                    title={card.rating_guard ? "Matikan Rating Guard (tap langsung ke Google)" : "Aktifkan Rating Guard (bintang dulu, 1-3 jadi keluhan)"}
+                                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 cursor-pointer border transition-colors ${
+                                      card.rating_guard
+                                        ? "bg-[#EFF6FF] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#DBEAFE]"
+                                        : "bg-surface-white border-outline-variant text-on-surface-variant hover:bg-surface-container-low"
+                                    }`}
+                                  >
+                                    <span className="material-symbols-outlined text-sm">{card.rating_guard ? "shield" : "shield_lock"}</span>
+                                    <span>{card.rating_guard ? "Guard ON" : "Guard"}</span>
+                                  </button>
+                                )}
+
+                                {card.is_active && (
+                                  <button
                                     onClick={() => setConfirmModal({ type: "reset", cardId: card.card_id })}
                                     disabled={actionLoadingId === card.card_id}
                                     className="bg-surface-white border border-outline-variant hover:bg-surface-container-low text-on-surface-variant text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 cursor-pointer"
@@ -1609,6 +1670,94 @@ export default function AdminDashboard({
                       })}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+
+            {/* Keluhan Masuk (Rating Guard) */}
+            <div className="bg-surface-white border border-outline-variant rounded-xl shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] mt-stack-md">
+              <div className="p-6 border-b border-outline-variant flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-text-muted">inbox</span>
+                  <div>
+                    <h3 className="text-title-md font-title-md text-primary">Keluhan Masuk (Guard)</h3>
+                    <p className="text-body-sm font-body-sm text-text-muted">
+                      Rating 1-3 bintang yang ditahan oleh sistem guard — tidak masuk ke Google.
+                    </p>
+                  </div>
+                </div>
+                <span className="bg-accent-red-bg border border-accent-red-border text-accent-red text-label-bold font-label-bold px-3 py-1.5 rounded-lg">
+                  {feedback.length} keluhan
+                </span>
+              </div>
+
+              {feedback.length === 0 ? (
+                <div className="p-10 text-center">
+                  <span className="material-symbols-outlined text-4xl text-text-muted mb-2">inbox</span>
+                  <p className="text-body-md font-body-md text-text-muted">
+                    Belum ada keluhan masuk. Pastikan SQL tabel <code className="font-mono text-xs">card_feedback</code> sudah dijalankan.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-outline-variant/50 max-h-[480px] overflow-y-auto">
+                  {feedback.map((f) => (
+                    <div key={f.id} className="p-5 flex flex-col md:flex-row md:items-start gap-3 md:gap-6">
+                      <div className="md:w-56 shrink-0">
+                        <div className="flex items-center gap-1 mb-1">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <span
+                              key={i}
+                              className="material-symbols-outlined text-sm"
+                              style={{
+                                color: i < f.rating ? "#F5A623" : undefined,
+                                fontVariationSettings: i < f.rating ? "'FILL' 1" : "'FILL' 0",
+                              }}
+                            >
+                              star
+                            </span>
+                          ))}
+                        </div>
+                        <p className="font-semibold text-primary text-body-sm font-body-sm leading-snug">
+                          {f.cards?.business_name || "Bisnis tanpa nama"}
+                        </p>
+                        <p className="text-xs text-text-muted font-mono mt-0.5">{f.card_id}</p>
+                        <p className="text-[11px] text-text-muted mt-0.5">
+                          {new Date(f.created_at).toLocaleString("id-ID", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body-sm font-body-sm text-on-surface whitespace-pre-wrap">{f.message}</p>
+                        {(f.customer_name || f.customer_phone) && (
+                          <div className="flex flex-wrap items-center gap-3 mt-2">
+                            {f.customer_name && (
+                              <span className="text-xs text-on-surface-variant flex items-center gap-1">
+                                <span className="material-symbols-outlined text-sm">person</span>
+                                {f.customer_name}
+                              </span>
+                            )}
+                            {f.customer_phone && (
+                              <a
+                                href={`https://wa.me/${f.customer_phone.replace(/\D/g, "").replace(/^0/, "62")}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-secondary font-semibold flex items-center gap-1 hover:underline"
+                              >
+                                <span className="material-symbols-outlined text-sm">call</span>
+                                {f.customer_phone}
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

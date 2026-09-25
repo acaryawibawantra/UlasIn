@@ -28,6 +28,18 @@ export async function POST(req: NextRequest) {
     const activeCount = cards?.filter((c) => c.is_active).length || 0;
     const inactiveCount = totalCount - activeCount;
 
+    // 1b. Fetch keluhan guard (rating 1-3) — join nama bisnis dari tabel cards.
+    // Kalau tabel card_feedback belum dibuat (SQL belum dijalankan), skip graceful.
+    const { data: feedback, error: feedbackError } = await supabase
+      .from("card_feedback")
+      .select("id, card_id, rating, message, customer_name, customer_phone, created_at, cards(business_name)")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (feedbackError) {
+      console.warn("card_feedback fetch skipped:", feedbackError.message);
+    }
+
     // 2. Fetch data Table QRs (Custom Meja Cafe)
     const { data: tableQrs, error: tableQrsError } = await supabase
       .from("table_qrs")
@@ -66,6 +78,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       cards: cards || [],
+      feedback: feedbackError ? [] : feedback || [],
       stats: {
         totalCount,
         activeCount,
