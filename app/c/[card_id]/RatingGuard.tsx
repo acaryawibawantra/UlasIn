@@ -93,7 +93,7 @@ export default function RatingGuard({
   // ── RATING 4-5: terima kasih singkat + auto redirect ke Google Review ──
   if (stage === "rating" && rating >= 4) {
     return (
-      <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
+      <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin overflow-x-hidden">
         <MobileHeader />
 
         <div className="flex-1 md:flex-none w-full max-w-[480px] mx-auto mt-16 md:mt-0 flex items-center justify-center px-4 md:px-0 py-8">
@@ -126,7 +126,7 @@ export default function RatingGuard({
   // ── TERIMA KASIH (setelah kirim keluhan) -> ajak beri Google Rating ──
   if (stage === "thanks") {
     return (
-      <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
+      <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin overflow-x-hidden">
         <MobileHeader />
 
         <main className="flex-1 md:flex-none w-full max-w-[480px] mx-auto mt-16 md:mt-0 flex items-center px-4 md:px-0 py-8">
@@ -168,7 +168,7 @@ export default function RatingGuard({
   // ── FORM KELUHAN (rating 1-3) ──
   if (stage === "negative") {
     return (
-      <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
+      <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin overflow-x-hidden">
         <MobileHeader />
 
         <main className="flex-1 md:flex-none w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant mt-16 md:mt-0 pt-stack-md pb-stack-lg px-container-margin md:p-8 flex flex-col justify-center gap-stack-md mx-auto animate-fade-in">
@@ -294,7 +294,7 @@ export default function RatingGuard({
 
   // ── STAGE AWAL: PILIH BINTANG ──
   return (
-    <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
+    <div className="bg-background text-on-background min-h-[100dvh] flex flex-col md:items-center md:justify-center p-0 md:p-container-margin overflow-x-hidden">
       <MobileHeader />
 
       <main className="flex-1 md:flex-none w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant mt-16 md:mt-0 pt-stack-lg pb-stack-lg px-container-margin md:p-8 flex flex-col items-center justify-center gap-stack-lg mx-auto text-center animate-fade-in">
@@ -305,9 +305,13 @@ export default function RatingGuard({
           </span>
         </div>
 
-        <div>
-          {/* Nama outlet cukup disebut sekali di sini */}
-          <span className="text-label-caps font-label-caps text-secondary bg-secondary/10 px-2.5 py-1 rounded-md font-semibold inline-block mb-3 max-w-full truncate align-bottom">
+        <div className="w-full min-w-0">
+          {/* Nama outlet cukup disebut sekali di sini.
+              truncate = potong dengan "..." supaya alamat panjang tidak meluber keluar kartu */}
+          <span
+            title={businessName || undefined}
+            className="text-label-caps font-label-caps text-secondary bg-secondary/10 px-2.5 py-1 rounded-md font-semibold inline-block max-w-full truncate align-bottom mb-3"
+          >
             {businessName || "Ulasan"}
           </span>
           <h1 className="text-headline-lg-mobile font-headline-lg-mobile md:text-headline-lg text-on-surface mb-2">
