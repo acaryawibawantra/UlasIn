@@ -40,7 +40,6 @@ export default async function CardPage({
         cardId={cardId}
         businessName={card.business_name}
         googleReviewUrl={card.google_review_url}
-        placeId={card.place_id}
       />
     );
   }

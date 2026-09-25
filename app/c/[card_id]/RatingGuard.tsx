@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import SmartRedirect from "./SmartRedirect";
 
 type GuardStage = "rating" | "negative" | "thanks";
@@ -10,12 +9,10 @@ export default function RatingGuard({
   cardId,
   businessName,
   googleReviewUrl,
-  placeId,
 }: {
   cardId: string;
   businessName: string;
   googleReviewUrl: string;
-  placeId?: string | null;
 }) {
   const [stage, setStage] = useState<GuardStage>("rating");
   const [rating, setRating] = useState(0);
@@ -28,19 +25,9 @@ export default function RatingGuard({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  // Link ke lokasi Maps (bukan halaman review) — dipakai di layar terima kasih
-  const mapsLocationUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-    businessName || cardId
-  )}${placeId ? `&query_place_id=${encodeURIComponent(placeId)}` : ""}`;
-
   function handleSelectStar(value: number) {
     setRating(value);
-    if (value >= 4) {
-      // Positif -> langsung arahkan ke Google Review (SmartRedirect handle buka app Maps)
-      setStage("rating");
-      return;
-    }
-    // Negatif -> tahan dulu di Ratey, minta keluhan
+    if (value >= 4) return; // positif -> render redirect di bawah
     setStage("negative");
   }
 
@@ -81,12 +68,15 @@ export default function RatingGuard({
     }
   }
 
-  // ── RATING 4-5: terima kasih + auto redirect ke Google Review ──
+  // ── RATING 4-5: terima kasih singkat + auto redirect ke Google Review ──
   if (stage === "rating" && rating >= 4) {
     return (
-      <div className="bg-background text-on-background min-h-screen flex flex-col md:items-center md:justify-center p-4 md:p-container-margin">
-        <div className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant p-8 flex flex-col items-center gap-4 mx-auto text-center animate-fade-in">
-          <span className="material-symbols-outlined text-5xl text-cta-activation" style={{ fontVariationSettings: "'FILL' 1" }}>
+      <div className="bg-background text-on-background min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant p-10 flex flex-col items-center gap-4 mx-auto text-center animate-fade-in">
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 72, color: "#F5A623", fontVariationSettings: "'FILL' 1" }}
+          >
             favorite
           </span>
           <h1 className="text-headline-lg-mobile font-headline-lg-mobile md:text-headline-lg text-on-surface">
@@ -94,31 +84,20 @@ export default function RatingGuard({
           </h1>
           <p className="text-body-md font-body-md text-on-surface-variant flex items-center gap-2 justify-center">
             <span className="spinner" />
-            Mengarahkan ke Google Review...
+            Membuka Google Review...
           </p>
         </div>
-        {/* Redirect ke halaman Google Review (dialog rating langsung) */}
+        {/* Langsung ke halaman Google Rating (dialog review) */}
         <SmartRedirect googleReviewUrl={googleReviewUrl} />
       </div>
     );
   }
 
-  // ── TERIMA KASIH (setelah kirim keluhan) ──
+  // ── TERIMA KASIH (setelah kirim keluhan) -> ajak beri Google Rating ──
   if (stage === "thanks") {
     return (
-      <div className="bg-background text-on-background min-h-screen flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
-        <header className="fixed top-0 w-full z-50 flex justify-between items-center px-4 h-16 bg-surface-white border-b border-outline-variant md:hidden">
-          <Link href="/" className="text-on-surface-variant flex items-center justify-center w-10 h-10 rounded-full hover:bg-surface-container transition-colors">
-            <span className="material-symbols-outlined">arrow_back</span>
-          </Link>
-          <div className="flex items-center gap-2.5">
-            <img src="/ratey-logo.png" alt="Ratey Logo" className="w-9 h-9 object-cover rounded-xl" />
-            <div className="text-headline-md font-headline-md font-bold text-primary">Ratey</div>
-          </div>
-          <div className="w-10" />
-        </header>
-
-        <main className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant mt-16 md:mt-0 pt-stack-lg pb-stack-lg px-container-margin md:p-8 flex flex-col items-center gap-stack-lg mx-auto text-center animate-fade-in">
+      <div className="bg-background text-on-background min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant pt-stack-lg pb-stack-lg px-6 md:p-8 flex flex-col items-center gap-stack-lg mx-auto text-center animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-accent-green-bg border border-accent-green-border text-accent-green flex items-center justify-center mx-auto">
             <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
               mark_email_read
@@ -130,22 +109,24 @@ export default function RatingGuard({
               Terima kasih atas masukan Anda 🙏
             </h1>
             <p className="text-body-md font-body-md text-on-surface-variant">
-              Keluhan Anda sudah kami teruskan ke tim <strong>{businessName}</strong> dan akan segera ditindaklanjuti.
+              Keluhan Anda sudah kami terima dan akan ditindaklanjuti oleh tim{" "}
+              <strong>{businessName}</strong>.
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 w-full">
-            <a
-              href={mapsLocationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full bg-cta-activation hover:brightness-110 text-on-primary text-label-bold font-label-bold py-4 px-6 rounded-lg shadow-ambient-soft transition-colors flex items-center justify-center gap-2 min-h-[48px]"
-            >
-              <span className="material-symbols-outlined text-sm">pin_drop</span>
-              <span>Lihat Lokasi di Google Maps</span>
-            </a>
-          </div>
-        </main>
+          <a
+            href={googleReviewUrl}
+            className="w-full bg-cta-activation hover:brightness-110 text-on-primary text-label-bold font-label-bold py-4 px-6 rounded-lg shadow-ambient-soft transition-colors flex items-center justify-center gap-2 min-h-[48px]"
+          >
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+              star
+            </span>
+            <span>Beri Google Rating</span>
+          </a>
+          <p className="text-[12px] text-text-muted -mt-2">
+            Kalau berkenan, ulasan Anda di Google sangat membantu kami.
+          </p>
+        </div>
       </div>
     );
   }
@@ -154,20 +135,9 @@ export default function RatingGuard({
   if (stage === "negative") {
     return (
       <div className="bg-background text-on-background min-h-screen flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
-        <header className="fixed top-0 w-full z-50 flex justify-between items-center px-4 h-16 bg-surface-white border-b border-outline-variant md:hidden">
-          <Link href="/" className="text-on-surface-variant flex items-center justify-center w-10 h-10 rounded-full hover:bg-surface-container transition-colors">
-            <span className="material-symbols-outlined">arrow_back</span>
-          </Link>
-          <div className="flex items-center gap-2.5">
-            <img src="/ratey-logo.png" alt="Ratey Logo" className="w-9 h-9 object-cover rounded-xl" />
-            <div className="text-headline-md font-headline-md font-bold text-primary">Ratey</div>
-          </div>
-          <div className="w-10" />
-        </header>
-
-        <main className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant mt-16 md:mt-0 pt-stack-md pb-stack-lg px-container-margin md:p-8 flex flex-col gap-stack-md mx-auto animate-fade-in">
-          <section className="flex flex-col gap-base">
-            <div className="flex items-center gap-1 mb-1">
+        <main className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant pt-stack-md pb-stack-lg px-container-margin md:p-8 flex flex-col gap-stack-md mx-auto animate-fade-in">
+          <section className="flex flex-col gap-base text-center">
+            <div className="flex items-center justify-center gap-1">
               {Array.from({ length: 5 }).map((_, i) => (
                 <span
                   key={i}
@@ -185,36 +155,32 @@ export default function RatingGuard({
               Kami mohon maaf 🙏
             </h1>
             <p className="text-body-sm font-body-sm text-on-surface-variant">
-              Atas pengalaman kurang menyenangkan Anda di <strong>{businessName}</strong>. Ceritakan kendalanya — masukan Anda langsung sampai ke tim kami untuk ditindaklanjuti.
+              Ceritakan apa yang kurang berkenan — masukan Anda langsung kami tindaklanjuti.
             </p>
           </section>
 
           <form onSubmit={handleSubmitFeedback} autoComplete="off" className="flex flex-col gap-stack-md">
             <div className="flex flex-col gap-base">
-              <label className="text-label-bold font-label-bold text-on-surface" htmlFor="keluhan">
-                Ceritakan Keluhan Anda <span className="text-accent-red">*</span>
-              </label>
               <textarea
                 id="keluhan"
+                aria-label="Ceritakan keluhan Anda"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Contoh: pesanan lama, pelayanan kurang ramah, tempat kurang bersih..."
+                placeholder="Contoh: pesanan lama, pelayanan kurang ramah..."
                 rows={5}
                 maxLength={2000}
                 required
+                autoFocus
                 className="w-full p-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-md font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary focus:border-secondary transition-all resize-none"
               />
-              <p className="text-[12px] text-text-muted">{message.trim().length}/2000 karakter (min. 10)</p>
+              <p className="text-[12px] text-text-muted text-right">{message.trim().length}/2000 (min. 10)</p>
             </div>
 
-            <div className="flex flex-col gap-base">
-              <label className="text-label-bold font-label-bold text-on-surface" htmlFor="nama">
-                Nama <span className="text-text-muted font-normal">(opsional)</span>
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-outline">
-                  <span className="material-symbols-outlined">person</span>
-                </span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-base">
+                <label className="text-label-bold font-label-bold text-on-surface" htmlFor="nama">
+                  Nama <span className="text-text-muted font-normal">(opsional)</span>
+                </label>
                 <input
                   id="nama"
                   type="text"
@@ -223,19 +189,14 @@ export default function RatingGuard({
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="Nama Anda"
                   maxLength={100}
-                  className="w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-md font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary focus:border-secondary transition-all"
+                  className="w-full p-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-md font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary focus:border-secondary transition-all"
                 />
               </div>
-            </div>
 
-            <div className="flex flex-col gap-base">
-              <label className="text-label-bold font-label-bold text-on-surface" htmlFor="nohp">
-                No. HP <span className="text-text-muted font-normal">(opsional, untuk follow-up)</span>
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-outline">
-                  <span className="material-symbols-outlined">call</span>
-                </span>
+              <div className="flex flex-col gap-base">
+                <label className="text-label-bold font-label-bold text-on-surface" htmlFor="nohp">
+                  No. HP <span className="text-text-muted font-normal">(opsional)</span>
+                </label>
                 <input
                   id="nohp"
                   type="tel"
@@ -245,7 +206,7 @@ export default function RatingGuard({
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   placeholder="08xxxxxxxxxx"
                   maxLength={20}
-                  className="w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-md font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary focus:border-secondary transition-all"
+                  className="w-full p-3 bg-surface-container-lowest border border-outline-variant rounded-lg text-body-md font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary focus:border-secondary transition-all"
                 />
               </div>
             </div>
@@ -295,46 +256,29 @@ export default function RatingGuard({
     );
   }
 
-  // ── STAGE AWAL: PILIH BINTANG ──
+  // ── STAGE AWAL: PILIH BINTANG (simpel + informatif) ──
   return (
-    <div className="bg-background text-on-background min-h-screen flex flex-col md:items-center md:justify-center p-0 md:p-container-margin">
-      {/* Top App Bar (Mobile Only) */}
-      <header className="fixed top-0 w-full z-50 flex justify-between items-center px-4 h-16 bg-surface-white border-b border-outline-variant md:hidden">
-        <Link href="/" className="text-on-surface-variant flex items-center justify-center w-10 h-10 rounded-full hover:bg-surface-container transition-colors">
-          <span className="material-symbols-outlined">arrow_back</span>
-        </Link>
-        <div className="flex items-center gap-2.5">
-          <img src="/ratey-logo.png" alt="Ratey Logo" className="w-9 h-9 object-cover rounded-xl" />
-          <div className="text-headline-md font-headline-md font-bold text-primary">Ratey</div>
-        </div>
-        <div className="w-10" />
-      </header>
-
-      <main className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant mt-16 md:mt-0 pt-stack-lg pb-stack-lg px-container-margin md:p-8 flex flex-col items-center gap-stack-lg mx-auto text-center animate-fade-in">
-        {/* Badge bisnis */}
-        <div className="w-14 h-14 rounded-2xl bg-secondary-container/10 text-secondary flex items-center justify-center">
-          <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-            storefront
+    <div className="bg-background text-on-background min-h-screen flex items-center justify-center p-4">
+      <main className="w-full max-w-[480px] bg-surface-container-lowest md:rounded-xl md:shadow-ambient-soft md:border md:border-outline-variant pt-stack-lg pb-stack-lg px-container-margin md:p-8 flex flex-col items-center gap-5 mx-auto text-center animate-fade-in">
+        {/* Identitas bisnis */}
+        <div className="flex items-center gap-2">
+          <img src="/ratey-logo.png" alt="Ratey" className="w-7 h-7 object-cover rounded-lg" />
+          <span className="text-label-bold font-label-bold text-on-surface-variant truncate max-w-[320px]">
+            {businessName || "Ratey"}
           </span>
         </div>
 
         <div>
-          <span className="text-label-caps font-label-caps text-secondary bg-secondary/10 px-2.5 py-1 rounded-md font-semibold inline-block mb-3">
-            {businessName || "Ulasan"}
-          </span>
-          <h1 className="text-headline-lg-mobile font-headline-lg-mobile md:text-headline-lg text-on-surface mb-2">
-            Bagaimana pengalaman Anda?
+          <h1 className="text-headline-lg-mobile font-headline-lg-mobile md:text-headline-lg text-on-surface">
+            Bagaimana pengalaman kamu?
           </h1>
-          <p className="text-body-md font-body-md text-on-surface-variant">
-            Beri rating untuk membantu {businessName || "kami"} memberikan pelayanan lebih baik.
+          <p className="text-body-md font-body-md text-on-surface-variant mt-1">
+            Satu tap bintang — penilaianmu membantu kami melayani lebih baik.
           </p>
         </div>
 
-        {/* 5 Bintang Interaktif */}
-        <div
-          className="flex items-center justify-center gap-2 py-2"
-          onMouseLeave={() => setHoveredStar(0)}
-        >
+        {/* 5 Bintang BESAR */}
+        <div className="flex items-center justify-center gap-3 py-3 w-full" onMouseLeave={() => setHoveredStar(0)}>
           {Array.from({ length: 5 }).map((_, i) => {
             const value = i + 1;
             const active = value <= (hoveredStar || rating);
@@ -345,11 +289,13 @@ export default function RatingGuard({
                 aria-label={`Beri ${value} bintang`}
                 onMouseEnter={() => setHoveredStar(value)}
                 onClick={() => handleSelectStar(value)}
-                className="transition-transform hover:scale-110 active:scale-95 cursor-pointer touch-manipulation"
+                className="p-1 -m-1 transition-transform hover:scale-110 active:scale-90 cursor-pointer touch-manipulation"
               >
                 <span
-                  className="material-symbols-outlined text-5xl select-none"
+                  className="material-symbols-outlined select-none"
                   style={{
+                    fontSize: 56,
+                    lineHeight: 1,
                     color: active ? "#F5A623" : "var(--color-outline, #CAC4D0)",
                     fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0",
                   }}
@@ -361,9 +307,8 @@ export default function RatingGuard({
           })}
         </div>
 
-        <p className="text-body-sm font-body-sm text-text-muted flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[16px]">lock</span>
-          Rating Anda aman dan tidak dipublikasikan tanpa izin.
+        <p className="text-body-sm font-body-sm text-text-muted">
+          ⭐ 4-5 langsung ke Google Review · 1-3 ceritakan langsung ke kami
         </p>
       </main>
     </div>
