@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
+
+const MAX_PIN_ATTEMPTS = 5;
+const PIN_LOCK_MINUTES = 15;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -13,7 +17,9 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseServerClient();
   const { data: card, error } = await supabase
     .from("cards")
-    .select("card_id, pin_hash, is_active")
+    .select(
+      "card_id, business_name, place_id, google_review_url, pin_hash, is_active, rating_guard, pin_failed_attempts, pin_locked_until"
+    )
     .eq("card_id", cardId.toUpperCase())
     .maybeSingle();
 
@@ -24,10 +30,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Kartu belum diaktivasi." }, { status: 400 });
   }
 
+  // Rate-limit: setelah beberapa kali PIN salah, kunci sementara.
+  if (card.pin_locked_until && new Date(card.pin_locked_until).getTime() > Date.now()) {
+    const minutesLeft = Math.ceil(
+      (new Date(card.pin_locked_until).getTime() - Date.now()) / 60000
+    );
+    return NextResponse.json(
+      { error: `Terlalu banyak PIN salah. Coba lagi dalam ${minutesLeft} menit.` },
+      { status: 429 }
+    );
+  }
+
   // Verifikasi PIN lama
   const pinMatch = await bcrypt.compare(pin, card.pin_hash);
   if (!pinMatch) {
-    return NextResponse.json({ error: "PIN yang Anda masukkan salah." }, { status: 401 });
+    const attempts = (card.pin_failed_attempts || 0) + 1;
+    const shouldLock = attempts >= MAX_PIN_ATTEMPTS;
+    await supabase
+      .from("cards")
+      .update({
+        pin_failed_attempts: shouldLock ? 0 : attempts,
+        pin_locked_until: shouldLock
+          ? new Date(Date.now() + PIN_LOCK_MINUTES * 60000).toISOString()
+          : card.pin_locked_until,
+      })
+      .eq("card_id", cardId.toUpperCase());
+
+    if (shouldLock) {
+      return NextResponse.json(
+        { error: `PIN salah ${MAX_PIN_ATTEMPTS}x. Kartu dikunci ${PIN_LOCK_MINUTES} menit.` },
+        { status: 429 }
+      );
+    }
+    return NextResponse.json(
+      { error: `PIN yang Anda masukkan salah. Sisa percobaan: ${MAX_PIN_ATTEMPTS - attempts}.` },
+      { status: 401 }
+    );
   }
 
   // Aksi khusus: ambil daftar keluhan masuk (Rating Guard) untuk kartu ini
@@ -77,8 +115,20 @@ export async function POST(req: NextRequest) {
     updates.pin_hash = await bcrypt.hash(newPin, 10);
   }
 
-  if (Object.keys(updates).length === 0) {
+  const hasContentChanges = Object.keys(updates).length > 0;
+  const hadFailedAttempts = (card.pin_failed_attempts || 0) > 0 || !!card.pin_locked_until;
+
+  if (!hasContentChanges && !hadFailedAttempts) {
     return NextResponse.json({ error: "Tidak ada perubahan yang dikirim." }, { status: 400 });
+  }
+
+  if (hasContentChanges) {
+    updates.updated_at = new Date().toISOString();
+  }
+  // PIN sudah benar → buka blokir & reset hitungan percobaan salah.
+  if (hadFailedAttempts) {
+    updates.pin_failed_attempts = 0;
+    updates.pin_locked_until = null;
   }
 
   const { error: updateError } = await supabase
@@ -89,6 +139,17 @@ export async function POST(req: NextRequest) {
   if (updateError) {
     console.error("Gagal update kartu:", updateError.message);
     return NextResponse.json({ error: "Gagal menyimpan perubahan." }, { status: 500 });
+  }
+
+  if (hasContentChanges) {
+    await logCardChange(supabase, {
+      cardId,
+      action: "edit",
+      actor: "client_pin",
+      oldValues: pickTrackedFields(card),
+      newValues: pickTrackedFields(updates),
+      ...getRequestMeta(req),
+    });
   }
 
   return NextResponse.json({ ok: true, message: "Berhasil memperbarui data kartu." });

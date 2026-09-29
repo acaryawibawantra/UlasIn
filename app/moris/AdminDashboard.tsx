@@ -405,6 +405,76 @@ export default function AdminDashboard({
     qrDataUrl: string;
   } | null>(null);
 
+  // Audit / riwayat perubahan kartu
+  type CardAuditRow = {
+    id: number;
+    card_id: string;
+    action: string;
+    actor: string;
+    actor_ip?: string | null;
+    actor_user_agent?: string | null;
+    old_values: Record<string, unknown> | null;
+    new_values: Record<string, unknown> | null;
+    created_at: string;
+  };
+  const [auditModal, setAuditModal] = useState<{ cardId: string; businessName: string | null } | null>(null);
+  const [auditLogs, setAuditLogs] = useState<CardAuditRow[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditMigrated, setAuditMigrated] = useState(true);
+
+  async function openAuditModal(cardId: string, businessName: string | null) {
+    setAuditModal({ cardId, businessName });
+    setAuditLogs([]);
+    setAuditMigrated(true);
+    setAuditLoading(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "get_card_audit", cardId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Gagal memuat riwayat kartu.");
+        return;
+      }
+      setAuditLogs(data.logs || []);
+      setAuditMigrated(data.migrated !== false);
+    } catch (err) {
+      alert("Terjadi kesalahan koneksi.");
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  function formatAuditTime(iso: string) {
+    try {
+      return new Date(iso).toLocaleString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  const AUDIT_ACTION_LABEL: Record<string, string> = {
+    activate: "Aktivasi",
+    edit: "Edit via PIN",
+    reset: "Reset (admin)",
+    toggle_guard: "Ubah Guard (admin)",
+  };
+
+  const AUDIT_ACTOR_LABEL: Record<string, string> = {
+    activation: "Pemilik kartu (aktivasi)",
+    client_pin: "Pemilik kartu (PIN)",
+    admin: "Admin",
+    system: "Sistem",
+  };
+
   useEffect(() => {
     fetchCards();
   }, []);
@@ -1627,6 +1697,17 @@ export default function AdminDashboard({
                                   <span className="material-symbols-outlined text-sm">qr_code_2</span>
                                   <span>Lihat QR</span>
                                 </button>
+
+                                {card.is_active && (
+                                  <button
+                                    onClick={() => openAuditModal(card.card_id, card.business_name)}
+                                    title="Lihat riwayat perubahan kartu (link review, guard, reset)"
+                                    className="bg-surface-white border border-outline-variant hover:bg-surface-container-low text-primary text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 cursor-pointer"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">history</span>
+                                    <span>Riwayat</span>
+                                  </button>
+                                )}
 
                                 {card.is_active && (
                                   <button
@@ -4305,6 +4386,133 @@ export default function AdminDashboard({
                   Akun ini hanya bisa mengelola <span className="font-bold text-primary">{accessModal.businessName}</span> (menu, wifi, jam operasional, logo) via portal <code className="font-mono">/kelola</code>. Tidak ada akses ke kartu NFC, client lain, atau data admin.
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RIWAYAT / AUDIT KARTU */}
+      {auditModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-hidden border border-outline-variant shadow-2xl flex flex-col animate-scale-up">
+            <div className="p-5 border-b border-outline-variant flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-bold text-headline-md text-primary flex items-center gap-2">
+                  <span className="material-symbols-outlined text-secondary">history</span>
+                  Riwayat Kartu
+                </h3>
+                <p className="text-xs font-mono text-secondary mt-0.5">{auditModal.cardId}</p>
+                {auditModal.businessName && (
+                  <p className="text-xs text-text-muted truncate">{auditModal.businessName}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setAuditModal(null)}
+                className="text-on-surface-variant hover:text-primary text-xl font-bold shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex flex-col gap-3">
+              {auditLoading ? (
+                <div className="text-center py-10 text-text-muted">
+                  <span className="material-symbols-outlined text-3xl animate-spin mb-2 block">sync</span>
+                  <p className="text-xs">Memuat riwayat...</p>
+                </div>
+              ) : !auditMigrated ? (
+                <div className="text-center py-10 text-text-muted">
+                  <span className="material-symbols-outlined text-3xl mb-2 block">database</span>
+                  <p className="text-xs">
+                    Tabel <code className="font-mono">card_audit_log</code> belum ada. Jalankan SQL migration terbaru di Supabase.
+                  </p>
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="text-center py-10 text-text-muted">
+                  <span className="material-symbols-outlined text-3xl mb-2 block">inbox</span>
+                  <p className="text-xs">Belum ada riwayat perubahan untuk kartu ini.</p>
+                </div>
+              ) : (
+                auditLogs.map((log) => {
+                  const fieldLabel: Record<string, string> = {
+                    business_name: "Nama bisnis",
+                    place_id: "Place ID",
+                    google_review_url: "Link review",
+                    is_active: "Status aktif",
+                    rating_guard: "Guard rating",
+                  };
+                  const changedKeys = Object.keys(log.new_values || {}).filter(
+                    (k) => JSON.stringify(log.old_values?.[k] ?? null) !== JSON.stringify(log.new_values?.[k] ?? null)
+                  );
+                  const actionLabel = AUDIT_ACTION_LABEL[log.action] || log.action;
+                  const actorLabel = AUDIT_ACTOR_LABEL[log.actor] || log.actor;
+                  const isEdit = log.action === "edit";
+                  return (
+                    <div
+                      key={log.id}
+                      className="rounded-xl border border-outline-variant bg-surface-bright p-3.5 flex flex-col gap-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                            isEdit
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-primary/5 text-primary border-primary/10"
+                          }`}
+                        >
+                          {actionLabel}
+                        </span>
+                        <span className="text-[11px] text-text-muted">{formatAuditTime(log.created_at)}</span>
+                      </div>
+                      <div className="text-[11px] text-text-muted flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[14px]">person</span>
+                        {actorLabel}
+                      </div>
+                      {(log.actor_ip || log.actor_user_agent) && (
+                        <div className="text-[10px] text-text-muted flex flex-col gap-0.5 bg-surface-container-low rounded-lg px-2.5 py-1.5">
+                          {log.actor_ip && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[13px]">public</span>
+                              IP: <span className="font-mono">{log.actor_ip}</span>
+                            </span>
+                          )}
+                          {log.actor_user_agent && (
+                            <span className="flex items-start gap-1.5">
+                              <span className="material-symbols-outlined text-[13px]">devices</span>
+                              <span className="break-all">{log.actor_user_agent}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {changedKeys.length > 0 && (
+                        <div className="flex flex-col gap-1 pt-1 border-t border-outline-variant/60">
+                          {changedKeys.map((k) => (
+                            <div key={k} className="text-[11px]">
+                              <span className="font-semibold text-on-surface">{fieldLabel[k] || k}:</span>{" "}
+                              <span className="text-on-surface-variant break-all">
+                                {String(log.old_values?.[k] ?? "(kosong)").slice(0, 80)}
+                              </span>{" "}
+                              <span className="text-secondary">→</span>{" "}
+                              <span className="font-semibold text-primary break-all">
+                                {String(log.new_values?.[k] ?? "(kosong)").slice(0, 80)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-4 border-t border-outline-variant flex justify-end">
+              <button
+                onClick={() => setAuditModal(null)}
+                className="py-2.5 px-5 bg-surface-container border border-outline-variant rounded-xl text-xs font-bold hover:bg-surface-container-high transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

@@ -24,6 +24,11 @@ export async function GET(req: NextRequest) {
   url.searchParams.set("input", query);
   url.searchParams.set("types", "establishment");
   url.searchParams.set("language", "id");
+  // Bias + batasi hasil ke negara target (default Indonesia) supaya listing
+  // spam / bisnis asing tidak nyasar muncul saat cari nama bisnis lokal.
+  const country = (process.env.GOOGLE_PLACES_COUNTRY || "id").toLowerCase();
+  url.searchParams.set("components", `country:${country}`);
+  url.searchParams.set("region", country);
   url.searchParams.set("key", apiKey);
 
   const res = await fetch(url.toString());

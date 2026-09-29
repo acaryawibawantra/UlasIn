@@ -45,6 +45,7 @@ export default function EditForm({
   const [selectedPlace, setSelectedPlace] = useState<PlaceSuggestion | null>(null);
   const [customLink, setCustomLink] = useState(googleReviewUrl || "");
   const [isSearching, setIsSearching] = useState(false);
+  const [overwriteConfirm, setOverwriteConfirm] = useState<{ from: string; to: string } | null>(null);
 
   // 4-box PIN states
   const [currentPinDigits, setCurrentPinDigits] = useState<string[]>(["", "", "", ""]);
@@ -157,22 +158,12 @@ export default function EditForm({
     }
   }
 
-  async function handleSaveLink(e: React.FormEvent) {
-    e.preventDefault();
+  async function saveLink() {
     setErrorMsg("");
     setSuccessMsg("");
 
     const currentPin = currentPinDigits.join("");
-    if (!/^\d{4}$/.test(currentPin)) {
-      setErrorMsg("Masukkan 4 digit PIN Anda untuk verifikasi.");
-      return;
-    }
-
     const businessName = selectedPlace ? selectedPlace.description : query.trim();
-    if (!businessName) {
-      setErrorMsg("Masukkan nama bisnis atau pilih dari saran Google.");
-      return;
-    }
 
     setStatus("saving");
     try {
@@ -192,18 +183,49 @@ export default function EditForm({
       if (!res.ok) {
         setStatus("error");
         setErrorMsg(data.error || "Gagal memperbarui link review.");
+        setOverwriteConfirm(null);
         return;
       }
 
       setStatus("done");
       setSuccessMsg("Link ulasan Google berhasil diperbarui!");
       setActiveModal(null);
+      setOverwriteConfirm(null);
       setCurrentPinDigits(["", "", "", ""]);
       window.location.reload();
     } catch (err) {
       setStatus("error");
       setErrorMsg("Terjadi kesalahan koneksi.");
     }
+  }
+
+  function handleSaveLink(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const currentPin = currentPinDigits.join("");
+    if (!/^\d{4}$/.test(currentPin)) {
+      setErrorMsg("Masukkan 4 digit PIN Anda untuk verifikasi.");
+      return;
+    }
+
+    const businessName = selectedPlace ? selectedPlace.description : query.trim();
+    if (!businessName) {
+      setErrorMsg("Masukkan nama bisnis atau pilih dari saran Google.");
+      return;
+    }
+
+    // Cegah perubahan link yang tidak disengaja (mis. salah tap suggestion):
+    // minta konfirmasi eksplisit kalau link tujuan berubah dari yang sekarang.
+    const nextLink = customLink.trim();
+    const prevLink = (googleReviewUrl || "").trim();
+    if (nextLink && nextLink !== prevLink) {
+      setOverwriteConfirm({ from: prevLink, to: nextLink });
+      return;
+    }
+
+    saveLink();
   }
 
   async function handleSavePin(e: React.FormEvent) {
@@ -518,6 +540,7 @@ export default function EditForm({
             onClick={() => {
               setActiveModal("link");
               setErrorMsg("");
+              setOverwriteConfirm(null);
               setCurrentPinDigits(["", "", "", ""]);
             }}
             className="w-full flex items-center justify-center gap-2 bg-primary text-on-primary h-12 rounded-lg text-label-bold font-label-bold hover:bg-on-surface transition-colors cursor-pointer"
@@ -568,6 +591,46 @@ export default function EditForm({
               </button>
             </div>
 
+            {overwriteConfirm ? (
+              <div className="flex flex-col gap-4">
+                <div className="bg-accent-red-bg border border-accent-red-border text-accent-red p-3 rounded-lg text-body-sm flex items-start gap-2">
+                  <span className="material-symbols-outlined text-lg">warning</span>
+                  <span>
+                    Link ulasan Google akan <strong>diganti</strong>. Pastikan ini benar sebelum melanjutkan.
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2 text-body-sm">
+                  <div>
+                    <span className="text-text-muted block text-[11px] uppercase">Link sekarang</span>
+                    <span className="break-all text-on-surface-variant">{overwriteConfirm.from || "(kosong)"}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted block text-[11px] uppercase">Link baru →</span>
+                    <span className="break-all font-semibold text-primary">{overwriteConfirm.to}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setOverwriteConfirm(null)}
+                    className="flex-1 py-3 border border-outline-variant rounded-lg font-label-bold"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    disabled={status === "saving"}
+                    onClick={() => {
+                      setOverwriteConfirm(null);
+                      saveLink();
+                    }}
+                    className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-bold hover:bg-on-surface"
+                  >
+                    {status === "saving" ? "Menyimpan..." : "Ya, Ganti Link"}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={handleSaveLink} autoComplete="off" className="flex flex-col gap-4">
               <div>
                 <label className="text-label-bold font-label-bold text-on-surface block mb-1">
@@ -671,6 +734,7 @@ export default function EditForm({
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { TAMMMU_PRESET_CATEGORIES, TAMMMU_PRESET_ITEMS, TAMMMU_ASSET_BASE } from "@/lib/tammmu-preset-menu";
 import { hashPassword } from "@/lib/client-auth";
+import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
 
 function generateCardId(length = 6) {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -92,6 +93,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Card ID wajib diisi." }, { status: 400 });
       }
 
+      const { data: before } = await supabase
+        .from("cards")
+        .select("business_name, place_id, google_review_url, is_active, rating_guard")
+        .eq("card_id", cardId.toUpperCase())
+        .maybeSingle();
+
       const { error } = await supabase
         .from("cards")
         .update({
@@ -101,12 +108,29 @@ export async function POST(req: NextRequest) {
           pin_hash: null,
           is_active: false,
           activated_at: null,
+          updated_at: new Date().toISOString(),
+          pin_failed_attempts: 0,
+          pin_locked_until: null,
         })
         .eq("card_id", cardId.toUpperCase());
 
       if (error) {
         return NextResponse.json({ error: "Gagal mereset kartu." }, { status: 500 });
       }
+
+      await logCardChange(supabase, {
+        cardId,
+        action: "reset",
+        actor: "admin",
+        oldValues: pickTrackedFields(before),
+        newValues: pickTrackedFields({
+          business_name: null,
+          place_id: null,
+          google_review_url: null,
+          is_active: false,
+        }),
+        ...getRequestMeta(req),
+      });
 
       return NextResponse.json({ ok: true, message: `Kartu ${cardId} berhasil di-reset.` });
     }
@@ -121,9 +145,15 @@ export async function POST(req: NextRequest) {
 
       const newGuardState = !!body?.ratingGuard;
 
+      const { data: before } = await supabase
+        .from("cards")
+        .select("business_name, place_id, google_review_url, is_active, rating_guard")
+        .eq("card_id", cardId.toUpperCase())
+        .maybeSingle();
+
       const { error } = await supabase
         .from("cards")
-        .update({ rating_guard: newGuardState })
+        .update({ rating_guard: newGuardState, updated_at: new Date().toISOString() })
         .eq("card_id", cardId.toUpperCase());
 
       if (error) {
@@ -131,10 +161,43 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Gagal mengubah guard rating. Pastikan SQL rating_guard sudah dijalankan." }, { status: 500 });
       }
 
+      await logCardChange(supabase, {
+        cardId,
+        action: "toggle_guard",
+        actor: "admin",
+        oldValues: pickTrackedFields(before),
+        newValues: pickTrackedFields({ rating_guard: newGuardState }),
+        ...getRequestMeta(req),
+      });
+
       return NextResponse.json({
         ok: true,
         message: `Guard rating kartu ${cardId} ${newGuardState ? "AKTIF" : "dimatikan"}.`,
       });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 1C. GET CARD AUDIT LOG (riwayat perubahan kartu)
+    // ─────────────────────────────────────────────────────────────────────
+    if (action === "get_card_audit") {
+      if (!cardId) {
+        return NextResponse.json({ error: "Card ID wajib diisi." }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("card_audit_log")
+        .select("*")
+        .eq("card_id", cardId.toUpperCase())
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) {
+        // Tabel audit belum dimigrate → kembalikan kosong, jangan gagalkan UI.
+        if (error.message.includes("does not exist") || (error as any)?.code === "42P01") {
+          return NextResponse.json({ ok: true, logs: [], migrated: false });
+        }
+        console.error("get_card_audit error:", error.message);
+        return NextResponse.json({ error: "Gagal memuat riwayat kartu." }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, logs: data || [], migrated: true });
     }
 
     // ─────────────────────────────────────────────────────────────────────

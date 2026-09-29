@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   // Check card existence & activation status
   const { data: existing, error: fetchError } = await supabase
     .from("cards")
-    .select("card_id, is_active")
+    .select("card_id, business_name, place_id, google_review_url, is_active")
     .eq("card_id", cardId.toUpperCase())
     .maybeSingle();
 
@@ -61,6 +62,9 @@ export async function POST(req: NextRequest) {
       pin_hash: pinHash,
       is_active: true,
       activated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      pin_failed_attempts: 0,
+      pin_locked_until: null,
     })
     .eq("card_id", cardId.toUpperCase());
 
@@ -68,6 +72,20 @@ export async function POST(req: NextRequest) {
     console.error(updateError.message);
     return NextResponse.json({ error: "Gagal menyimpan aktivasi." }, { status: 500 });
   }
+
+  await logCardChange(supabase, {
+    cardId,
+    action: "activate",
+    actor: "activation",
+    oldValues: pickTrackedFields(existing),
+    newValues: pickTrackedFields({
+      business_name: businessName,
+      place_id: finalPlaceId,
+      google_review_url: googleReviewUrl,
+      is_active: true,
+    }),
+    ...getRequestMeta(req),
+  });
 
   return NextResponse.json({ ok: true, googleReviewUrl });
 }

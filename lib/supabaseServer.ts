@@ -25,6 +25,10 @@ export type CardRow = {
   google_review_url: string | null;
   pin_hash: string | null;
   is_active: boolean;
+  rating_guard?: boolean;
   created_at: string;
+  updated_at?: string | null;
   activated_at: string | null;
+  pin_failed_attempts?: number;
+  pin_locked_until?: string | null;
 };

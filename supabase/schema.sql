@@ -112,7 +112,7 @@ create table if not exists menu_items (
   image_url text,
   badge text,
   is_featured boolean not null default false,
-  is_active boolean not null default true,
+  active boolean not null default true,
   sort_order int not null default 0,
   search_key text,
   created_at timestamptz not null default now(),
@@ -120,7 +120,7 @@ create table if not exists menu_items (
 );
 
 create index if not exists idx_menu_items_client on menu_items (client_slug);
-create index if not exists idx_menu_items_active on menu_items (client_slug, is_active);
+create index if not exists idx_menu_items_active on menu_items (client_slug, active);
 alter table menu_items enable row level security;
 
 -- ═══════════════════════════════════════════════════════
@@ -205,3 +205,39 @@ create index if not exists idx_card_feedback_created on card_feedback (created_a
 
 -- RLS: tanpa policy — hanya server (service_role) yang bisa akses
 alter table card_feedback enable row level security;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- AUDIT LOG & PROTEKSI PIN KARTU
+-- updated_at        : kapan kartu terakhir berubah (aktivasi / edit / guard / reset)
+-- pin_failed_attempts / pin_locked_until : rate-limit percobaan PIN di /api/edit
+-- card_audit_log    : riwayat siapa & kapan mengubah data kartu (deteksi perubahan
+--                     link review yang tidak diinginkan)
+-- ──────────────────────────────────────────────────────────────────────────────
+alter table cards
+  add column if not exists updated_at timestamptz,
+  add column if not exists pin_failed_attempts int not null default 0,
+  add column if not exists pin_locked_until timestamptz;
+
+create table if not exists card_audit_log (
+  id bigserial primary key,
+  card_id text not null,
+  action text not null,
+  actor text not null default 'system',
+  actor_ip text,
+  actor_user_agent text,
+  old_values jsonb,
+  new_values jsonb,
+  created_at timestamptz not null default now()
+);
+
+-- Untuk database yang tabel audit-nya sudah terlanjur dibuat sebelum kolom
+-- IP/UA ada (idempotent — aman dijalankan berulang).
+alter table card_audit_log
+  add column if not exists actor_ip text,
+  add column if not exists actor_user_agent text;
+
+create index if not exists idx_card_audit_log_card on card_audit_log (card_id);
+create index if not exists idx_card_audit_log_created on card_audit_log (created_at desc);
+
+-- RLS: tanpa policy — hanya server (service_role) yang bisa akses
+alter table card_audit_log enable row level security;
