@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
+import { isBlockedReviewUrl, buildPlaceReviewUrl } from "@/lib/review-url";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -23,9 +24,20 @@ export async function POST(req: NextRequest) {
   if (gmapsLink && gmapsLink.trim().length > 0) {
     googleReviewUrl = gmapsLink.trim();
   } else if (placeId) {
-    googleReviewUrl = `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
+    googleReviewUrl = buildPlaceReviewUrl(placeId);
   } else {
     return NextResponse.json({ error: "Pilih nama bisnis dari saran Google atau masukkan Link Google Maps Review." }, { status: 400 });
+  }
+
+  // Tolak link share Maps yang mengarah ke tempat salah (bukan form ulasan).
+  if (isBlockedReviewUrl(googleReviewUrl)) {
+    return NextResponse.json(
+      {
+        error:
+          "Link Google Maps ini tidak valid (mengarah ke tempat yang salah, bukan form ulasan). Pilih nama bisnis dari saran Google, atau tempel link yang mengandung 'writereview'.",
+      },
+      { status: 400 }
+    );
   }
 
   const supabase = getSupabaseServerClient();

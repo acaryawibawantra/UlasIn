@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { resolveReviewUrl } from "@/lib/review-url";
 
 /* ─── Types for Dinamic Template Data ─── */
 type ClientBranding = {
@@ -59,10 +60,8 @@ const DEFAULT_BORDER = "#E8E3DA";
 const DEFAULT_BG_ALT = "#F3EFEA";
 
 function buildGoogleReviewUrl(placeId?: string | null, directUrl?: string | null) {
-  if (directUrl) return directUrl;
-  if (placeId)
-    return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
-  return "#";
+  const url = resolveReviewUrl(placeId, directUrl);
+  return url || "#";
 }
 
 function formatPriceNum(num: number | null | undefined): string {
