@@ -241,3 +241,18 @@ create index if not exists idx_card_audit_log_created on card_audit_log (created
 
 -- RLS: tanpa policy — hanya server (service_role) yang bisa akses
 alter table card_audit_log enable row level security;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- TRACKING PRODUKSI KARTU (khusus batch perusahaan)
+-- Checklist tahapan perakitan kartu fisik, diisi manual oleh admin:
+--   prod_card_ready      = true -> kartu fisik siap (WARNA KUNING)
+--   prod_nfc_installed   = true -> chip NFC sudah dipasang + link/QR sudah diisi
+--                                 sesuai card_id (WARNA BIRU)
+--   prod_ready_sell      = true -> kartu siap dijual & siap diaktivasi klien
+--                                 (WARNA HIJAU)
+-- Prioritas warna: ready_sell > nfc_installed > card_ready > belum.
+-- ──────────────────────────────────────────────────────────────────────────────
+alter table cards
+  add column if not exists prod_card_ready boolean not null default false,
+  add column if not exists prod_nfc_installed boolean not null default false,
+  add column if not exists prod_ready_sell boolean not null default false;

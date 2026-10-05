@@ -8,6 +8,9 @@ const TRACKED_FIELDS = [
   "google_review_url",
   "is_active",
   "rating_guard",
+  "prod_card_ready",
+  "prod_nfc_installed",
+  "prod_ready_sell",
 ] as const;
 
 type TrackedField = (typeof TRACKED_FIELDS)[number];

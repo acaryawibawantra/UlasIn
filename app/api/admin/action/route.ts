@@ -201,6 +201,72 @@ export async function POST(req: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // 1D. UPDATE TRACKING PRODUKSI KARTU (checklist perakitan fisik)
+    // ─────────────────────────────────────────────────────────────────────
+    if (action === "update_production_status") {
+      if (!cardId) {
+        return NextResponse.json({ error: "Card ID wajib diisi." }, { status: 400 });
+      }
+
+      const patch: Record<string, boolean> = {};
+      if (typeof body?.prodCardReady === "boolean") patch.prod_card_ready = body.prodCardReady;
+      if (typeof body?.prodNfcInstalled === "boolean") patch.prod_nfc_installed = body.prodNfcInstalled;
+      if (typeof body?.prodReadySell === "boolean") patch.prod_ready_sell = body.prodReadySell;
+
+      if (Object.keys(patch).length === 0) {
+        return NextResponse.json({ error: "Tidak ada status produksi yang dikirim." }, { status: 400 });
+      }
+
+      // Aturan pipeline: tahap lanjutan otomatis menyalakan tahap sebelumnya,
+      // dan mematikan tahap sebelumnya otomatis mematikan tahap setelahnya.
+      if (patch.prod_nfc_installed === true) patch.prod_card_ready = true;
+      if (patch.prod_ready_sell === true) {
+        patch.prod_card_ready = true;
+        patch.prod_nfc_installed = true;
+      }
+      if (patch.prod_card_ready === false) {
+        patch.prod_nfc_installed = false;
+        patch.prod_ready_sell = false;
+      }
+      if (patch.prod_nfc_installed === false) {
+        patch.prod_ready_sell = false;
+      }
+
+      const { data: before } = await supabase
+        .from("cards")
+        .select("prod_card_ready, prod_nfc_installed, prod_ready_sell, is_active, business_name, place_id, google_review_url, rating_guard")
+        .eq("card_id", cardId.toUpperCase())
+        .maybeSingle();
+
+      const { error } = await supabase
+        .from("cards")
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq("card_id", cardId.toUpperCase());
+
+      if (error) {
+        if ((error as any)?.code === "42703" || error.message?.includes("prod_")) {
+          return NextResponse.json(
+            { error: "Kolom tracking produksi belum ada. Jalankan SQL migration terbaru di Supabase." },
+            { status: 500 }
+          );
+        }
+        console.error("update_production_status error:", error.message);
+        return NextResponse.json({ error: "Gagal menyimpan status produksi." }, { status: 500 });
+      }
+
+      await logCardChange(supabase, {
+        cardId,
+        action: "production",
+        actor: "admin",
+        oldValues: pickTrackedFields(before),
+        newValues: pickTrackedFields(patch),
+        ...getRequestMeta(req),
+      });
+
+      return NextResponse.json({ ok: true, message: `Status produksi kartu ${cardId} diperbarui.` });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // 2. DELETE CARD
     // ─────────────────────────────────────────────────────────────────────
     if (action === "delete") {

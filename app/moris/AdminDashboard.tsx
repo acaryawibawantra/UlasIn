@@ -14,7 +14,30 @@ type CardData = {
   batch_label?: string | null;
   order_type?: string | null;
   rating_guard?: boolean | null;
+  prod_card_ready?: boolean | null;
+  prod_nfc_installed?: boolean | null;
+  prod_ready_sell?: boolean | null;
 };
+
+/* ─── Tracking Produksi Kartu (checklist perakitan fisik) ───
+   kuning = kartu ready, biru = NFC + link terisi, hijau = siap dijual */
+export type ProdStage = "none" | "ready" | "nfc" | "sell";
+export const PROD_STAGES: Record<ProdStage, { label: string; color: string; bg: string; border: string }> = {
+  none: { label: "Belum Diproses", color: "#6B7280", bg: "#F3F4F6", border: "#E5E7EB" },
+  ready: { label: "Kartu Ready", color: "#B45309", bg: "#FEF3C7", border: "#FDE68A" },
+  nfc: { label: "NFC + Link Terisi", color: "#1D4ED8", bg: "#DBEAFE", border: "#BFDBFE" },
+  sell: { label: "Siap Dijual", color: "#166534", bg: "#DCFCE7", border: "#BBF7D0" },
+};
+export function getProdStage(card: {
+  prod_card_ready?: boolean | null;
+  prod_nfc_installed?: boolean | null;
+  prod_ready_sell?: boolean | null;
+}): ProdStage {
+  if (card.prod_ready_sell) return "sell";
+  if (card.prod_nfc_installed) return "nfc";
+  if (card.prod_card_ready) return "ready";
+  return "none";
+}
 
 // Keluhan pelanggan dari Rating Guard (hanya rating 1-3)
 type FeedbackData = {
@@ -561,6 +584,66 @@ export default function AdminDashboard({
     } finally {
       setActionLoadingId(null);
     }
+  }
+
+  // Checklist tracking produksi kartu perusahaan (kuning/biru/hijau)
+  async function handleProductionStatus(
+    cardId: string,
+    next: { prod_card_ready: boolean; prod_nfc_installed: boolean; prod_ready_sell: boolean }
+  ) {
+    setActionLoadingId(cardId);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secretKey,
+          action: "update_production_status",
+          cardId,
+          prodCardReady: next.prod_card_ready,
+          prodNfcInstalled: next.prod_nfc_installed,
+          prodReadySell: next.prod_ready_sell,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Gagal menyimpan status produksi.");
+        return;
+      }
+      fetchCards();
+    } catch (err) {
+      alert("Terjadi kesalahan koneksi.");
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  // Toggle satu tahap checklist dengan aturan pipeline (naik otomatis, turun otomatis)
+  function toggleProdStage(
+    card: CardData,
+    key: "prod_card_ready" | "prod_nfc_installed" | "prod_ready_sell"
+  ) {
+    let { prod_card_ready: ready, prod_nfc_installed: nfc, prod_ready_sell: sell } = {
+      prod_card_ready: !!card.prod_card_ready,
+      prod_nfc_installed: !!card.prod_nfc_installed,
+      prod_ready_sell: !!card.prod_ready_sell,
+    };
+    const value = !(key === "prod_card_ready" ? ready : key === "prod_nfc_installed" ? nfc : sell);
+    if (key === "prod_card_ready") {
+      ready = value;
+      if (!value) { nfc = false; sell = false; }
+    } else if (key === "prod_nfc_installed") {
+      nfc = value;
+      if (value) ready = true; else sell = false;
+    } else {
+      sell = value;
+      if (value) { ready = true; nfc = true; }
+    }
+    handleProductionStatus(card.card_id, {
+      prod_card_ready: ready,
+      prod_nfc_installed: nfc,
+      prod_ready_sell: sell,
+    });
   }
 
   async function handleTableQrDelete(tableId: number) {
@@ -1377,8 +1460,21 @@ export default function AdminDashboard({
     }))
     .sort((a, b) => new Date(b.cards[0]?.created_at || 0).getTime() - new Date(a.cards[0]?.created_at || 0).getTime());
 
-  const filteredCompanyGroups = companySearch
-    ? companyGroups.filter((g) => g.label.toLowerCase().includes(companySearch.toLowerCase()))
+  // Pencarian kartu perusahaan: cocokkan nama perusahaan, ID kartu, atau nama bisnis.
+  // Kalau ketemu lewat ID/nama bisnis, group-nya ditampilkan hanya berisi kartu yang cocok.
+  const companySearchTerm = companySearch.trim().toLowerCase();
+  const filteredCompanyGroups = companySearchTerm
+    ? companyGroups
+        .map((g) => {
+          if (g.label.toLowerCase().includes(companySearchTerm)) return g;
+          const matchedCards = g.cards.filter(
+            (c) =>
+              c.card_id.toLowerCase().includes(companySearchTerm) ||
+              (c.business_name || "").toLowerCase().includes(companySearchTerm)
+          );
+          return matchedCards.length > 0 ? { ...g, cards: matchedCards } : null;
+        })
+        .filter((g): g is (typeof companyGroups)[number] => g !== null)
     : companyGroups;
 
   // Filtered Cards (hanya kartu umum)
@@ -1881,7 +1977,7 @@ export default function AdminDashboard({
               <div className="relative flex-1 md:w-80">
                 <input
                   type="text"
-                  placeholder="Cari nama perusahaan..."
+                  placeholder="Cari nama perusahaan / ID kartu / nama bisnis..."
                   value={companySearch}
                   onChange={(e) => setCompanySearch(e.target.value)}
                   className="w-full bg-surface-white border border-outline-variant rounded-xl px-4 py-2.5 pl-10 text-body-sm font-body-sm focus:outline-none focus:border-primary transition-colors"
@@ -1908,7 +2004,7 @@ export default function AdminDashboard({
             ) : (
               <div className="space-y-stack-sm">
                 {filteredCompanyGroups.map((group) => {
-                  const isExpanded = expandedBatch === group.label;
+                  const isExpanded = companySearchTerm ? true : expandedBatch === group.label;
                   const activeInGroup = group.cards.filter((c) => c.is_active).length;
                   const isBatchLoading = batchQrLoadingLabel === group.label;
                   const isDeleteLoading = batchDeleteLoadingLabel === group.label;
@@ -1983,13 +2079,25 @@ export default function AdminDashboard({
                               const reviewUrl = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
                               const isCopied = copiedCardId === card.card_id;
                               const busy = actionLoadingId === card.card_id;
+                              const prod = PROD_STAGES[getProdStage(card)];
                               return (
                                 <div key={card.card_id} className="px-4 md:px-5 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
                                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                                    <span className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${card.is_active ? "bg-[#22C55E]" : "bg-[#EF4444]"}`} />
+                                    <span
+                                      className="w-2.5 h-2.5 mt-1.5 rounded-full shrink-0"
+                                      style={{ background: prod.color }}
+                                      title={`Tracking produksi: ${prod.label}`}
+                                    />
                                     <div className="min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-mono font-bold text-primary text-body-sm">{card.card_id}</span>
+                                        {/* Badge tracking produksi (kuning/biru/hijau) */}
+                                        <span
+                                          className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                                          style={{ background: prod.bg, color: prod.color, borderColor: prod.border }}
+                                        >
+                                          {prod.label}
+                                        </span>
                                         {card.is_active ? (
                                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#DCFCE7] text-[#15803D]">
                                             <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] mr-1.5 animate-pulse"></span>
@@ -2026,6 +2134,32 @@ export default function AdminDashboard({
                                       ) : (
                                         <span className="text-[11px] text-text-muted italic mt-0.5 block">Menunggu Aktivasi Klien</span>
                                       )}
+
+                                      {/* Checklist tracking perakitan kartu NFC */}
+                                      <div className="flex items-center gap-3 flex-wrap mt-1.5">
+                                        {([
+                                          { key: "prod_card_ready", label: "Kartu Ready", stage: PROD_STAGES.ready, checked: !!card.prod_card_ready },
+                                          { key: "prod_nfc_installed", label: "NFC + Link", stage: PROD_STAGES.nfc, checked: !!card.prod_nfc_installed },
+                                          { key: "prod_ready_sell", label: "Siap Jual", stage: PROD_STAGES.sell, checked: !!card.prod_ready_sell },
+                                        ] as const).map((item) => (
+                                          <label
+                                            key={item.key}
+                                            className="inline-flex items-center gap-1.5 text-[10px] font-semibold cursor-pointer select-none disabled:opacity-50"
+                                            style={{ color: item.checked ? item.stage.color : "#9CA3AF" }}
+                                            title={`Tandai: ${item.label}`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={item.checked}
+                                              disabled={busy}
+                                              onChange={() => toggleProdStage(card, item.key)}
+                                              className="w-3.5 h-3.5 rounded cursor-pointer disabled:opacity-50"
+                                              style={{ accentColor: item.stage.color }}
+                                            />
+                                            {item.label}
+                                          </label>
+                                        ))}
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap">

@@ -26,6 +26,9 @@ export type CardRow = {
   pin_hash: string | null;
   is_active: boolean;
   rating_guard?: boolean;
+  prod_card_ready?: boolean;
+  prod_nfc_installed?: boolean;
+  prod_ready_sell?: boolean;
   created_at: string;
   updated_at?: string | null;
   activated_at: string | null;
