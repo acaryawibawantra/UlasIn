@@ -1982,22 +1982,57 @@ export default function AdminDashboard({
                             {group.cards.map((card) => {
                               const reviewUrl = `${typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/c/${card.card_id}`;
                               const isCopied = copiedCardId === card.card_id;
+                              const busy = actionLoadingId === card.card_id;
                               return (
-                                <div key={card.card_id} className="px-4 md:px-5 py-3 flex flex-col md:flex-row md:items-center justify-between gap-2">
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <span className={`w-2 h-2 rounded-full shrink-0 ${card.is_active ? "bg-[#22C55E]" : "bg-[#EF4444]"}`} />
+                                <div key={card.card_id} className="px-4 md:px-5 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                                    <span className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${card.is_active ? "bg-[#22C55E]" : "bg-[#EF4444]"}`} />
                                     <div className="min-w-0">
-                                      <span className="font-mono font-bold text-primary text-body-sm block">{card.card_id}</span>
-                                      <span className="text-[11px] text-text-muted truncate block max-w-[220px]">
-                                        {card.is_active ? (card.business_name || "Aktif") : "Belum diaktivasi"}
-                                      </span>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-mono font-bold text-primary text-body-sm">{card.card_id}</span>
+                                        {card.is_active ? (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#DCFCE7] text-[#15803D]">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] mr-1.5 animate-pulse"></span>
+                                            Aktif
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-container-high text-on-surface-variant border border-outline-variant">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+                                            Belum Aktif
+                                          </span>
+                                        )}
+                                        {card.rating_guard ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]" title="Rating Guard aktif: bintang 4-5 ke Google, 1-3 isi keluhan">
+                                            <span className="material-symbols-outlined text-[12px]">shield</span>
+                                            Guard ON
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      {card.is_active && card.business_name ? (
+                                        <div className="mt-0.5 min-w-0">
+                                          <p className="text-[11px] text-on-surface-variant truncate max-w-[260px]" title={card.business_name}>{card.business_name}</p>
+                                          {card.google_review_url && (
+                                            <a
+                                              href={card.google_review_url}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="text-secondary hover:underline text-[11px] inline-flex items-center gap-1"
+                                            >
+                                              <span>Buka Link Review</span>
+                                              <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+                                            </a>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-[11px] text-text-muted italic mt-0.5 block">Menunggu Aktivasi Klien</span>
+                                      )}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                                     <button
                                       onClick={() => handleCopyText(reviewUrl, card.card_id)}
                                       className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] text-[#5C564A] transition-colors cursor-pointer"
-                                      title="Copy link"
+                                      title="Salin link NFC"
                                     >
                                       <span className="material-symbols-outlined text-[16px]">{isCopied ? "check" : "content_copy"}</span>
                                     </button>
@@ -2008,6 +2043,49 @@ export default function AdminDashboard({
                                     >
                                       <span className="material-symbols-outlined text-[16px]">download</span>
                                     </button>
+                                    <button
+                                      onClick={async () => {
+                                        const qrDataUrl = await QRCode.toDataURL(reviewUrl, { width: 600, margin: 2 });
+                                        setQrPreviewModal({ cardId: card.card_id, url: reviewUrl, qrDataUrl });
+                                      }}
+                                      className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] text-primary transition-colors cursor-pointer"
+                                      title="Lihat QR"
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">qr_code_2</span>
+                                    </button>
+                                    {card.is_active && (
+                                      <button
+                                        onClick={() => openAuditModal(card.card_id, card.business_name)}
+                                        className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] text-primary transition-colors cursor-pointer"
+                                        title="Riwayat perubahan kartu"
+                                      >
+                                        <span className="material-symbols-outlined text-[16px]">history</span>
+                                      </button>
+                                    )}
+                                    {card.is_active && (
+                                      <button
+                                        onClick={() => handleToggleGuard(card.card_id, !card.rating_guard)}
+                                        disabled={busy}
+                                        className={`p-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+                                          card.rating_guard
+                                            ? "bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#DBEAFE]"
+                                            : "bg-surface-container hover:bg-[#F3EFEA] text-on-surface-variant"
+                                        }`}
+                                        title={card.rating_guard ? "Matikan Guard (tap langsung ke Google)" : "Aktifkan Guard (bintang dulu, 1-3 jadi keluhan)"}
+                                      >
+                                        <span className="material-symbols-outlined text-[16px]">{card.rating_guard ? "shield" : "shield_lock"}</span>
+                                      </button>
+                                    )}
+                                    {card.is_active && (
+                                      <button
+                                        onClick={() => setConfirmModal({ type: "reset", cardId: card.card_id })}
+                                        disabled={busy}
+                                        className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] text-on-surface-variant transition-colors cursor-pointer disabled:opacity-50"
+                                        title="Reset kartu (kembali belum aktif)"
+                                      >
+                                        <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => setConfirmModal({ type: "delete", cardId: card.card_id })}
                                       className="p-1.5 rounded-lg bg-surface-container hover:bg-red-50 text-red-500 transition-colors cursor-pointer"
