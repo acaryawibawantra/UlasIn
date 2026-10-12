@@ -317,6 +317,16 @@ export default function AdminDashboard({
   const [resetTarget, setResetTarget] = useState<ClientUserRow | null>(null);
   const [resetPassword, setResetPassword] = useState("");
 
+  // Company Access Modal (Portal /perusahaan/[slug])
+  type CompanyUserRow = { id: number; company_name: string; email: string; is_active: boolean; last_login_at: string | null; created_at: string };
+  const [companyAccessModal, setCompanyAccessModal] = useState<string | null>(null);
+  const [companyUsers, setCompanyUsers] = useState<CompanyUserRow[]>([]);
+  const [companyAccessLoading, setCompanyAccessLoading] = useState(false);
+  const [companyAccessSubmitting, setCompanyAccessSubmitting] = useState(false);
+  const [companyAccessForm, setCompanyAccessForm] = useState({ email: "", password: "" });
+  const [companyResetTarget, setCompanyResetTarget] = useState<CompanyUserRow | null>(null);
+  const [companyResetPassword, setCompanyResetPassword] = useState("");
+
   // Category Modal
   const [categoryModal, setCategoryModal] = useState<
     | { mode: "create"; initial?: Partial<CategoryFormState> }
@@ -885,9 +895,108 @@ export default function AdminDashboard({
     }
   }
 
-  /* ═══════════════════════════════════════════════════
-     IMAGE UPLOAD (Supabase Storage bucket "menu-assets")
-     ═══════════════════════════════════════════════════ */
+  /* ── Company Access Handlers (Portal /perusahaan/[slug]) ── */
+  async function handleOpenCompanyAccess(companyName: string) {
+    setCompanyAccessModal(companyName);
+    setCompanyAccessForm({ email: "", password: "" });
+    setCompanyResetTarget(null);
+    setCompanyResetPassword("");
+    setCompanyAccessLoading(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "list_company_users", companyName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal memuat akun.");
+      setCompanyUsers(data.users || []);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal memuat akun.");
+      setCompanyAccessModal(null);
+    } finally {
+      setCompanyAccessLoading(false);
+    }
+  }
+
+  async function handleCreateCompanyUser() {
+    if (!companyAccessModal) return;
+    if (!companyAccessForm.email.trim() || !companyAccessForm.password) {
+      alert("Email dan password wajib diisi.");
+      return;
+    }
+    setCompanyAccessSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secretKey,
+          action: "create_company_user",
+          companyName: companyAccessModal,
+          companyUserEmail: companyAccessForm.email.trim(),
+          companyUserPassword: companyAccessForm.password,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal membuat akun.");
+      alert(data?.message || "Akun dibuat.");
+      setCompanyAccessForm({ email: "", password: "" });
+      await handleOpenCompanyAccess(companyAccessModal);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal membuat akun.");
+    } finally {
+      setCompanyAccessSubmitting(false);
+    }
+  }
+
+  async function handleResetCompanyUserPassword() {
+    if (!companyResetTarget || companyResetPassword.length < 6) {
+      alert("Password baru minimal 6 karakter.");
+      return;
+    }
+    setCompanyAccessSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secretKey,
+          action: "reset_company_user_password",
+          companyUserId: companyResetTarget.id,
+          companyUserPassword: companyResetPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal reset password.");
+      alert(data?.message || "Password direset.");
+      setCompanyResetTarget(null);
+      setCompanyResetPassword("");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal reset password.");
+    } finally {
+      setCompanyAccessSubmitting(false);
+    }
+  }
+
+  async function handleDeleteCompanyUser(user: CompanyUserRow) {
+    if (!window.confirm(`Hapus akun ${user.email}?\nPerusahaan tidak akan bisa login dengan email ini lagi.`)) return;
+    setCompanyAccessSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, action: "delete_company_user", companyUserId: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal hapus akun.");
+      setCompanyUsers((prev) => prev.filter((u) => u.id !== user.id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal hapus akun.");
+    } finally {
+      setCompanyAccessSubmitting(false);
+    }
+  }
 
   async function handleImageUpload(
     file: File,
@@ -2033,6 +2142,14 @@ export default function AdminDashboard({
                         </button>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleOpenCompanyAccess(group.label)}
+                            className="px-3 py-2 border border-outline-variant rounded-lg text-[11px] font-bold text-on-surface-variant hover:bg-surface-container transition-all cursor-pointer flex items-center gap-1.5"
+                            title="Kelola akun login portal perusahaan"
+                          >
+                            <span className="material-symbols-outlined text-sm">person</span>
+                            <span>Akun</span>
+                          </button>
                           <button
                             onClick={() => handleDownloadBatchQr(group.label, group.cards)}
                             disabled={isBatchLoading}
@@ -4596,6 +4713,147 @@ export default function AdminDashboard({
               <div className="p-3 rounded-xl bg-primary/[0.03] border border-primary/10">
                 <p className="text-[11px] text-text-muted leading-relaxed">
                   Akun ini hanya bisa mengelola <span className="font-bold text-primary">{accessModal.businessName}</span> (menu, wifi, jam operasional, logo) via portal <code className="font-mono">/kelola</code>. Tidak ada akses ke kartu NFC, client lain, atau data admin.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: AKUN PORTAL PERUSAHAAN */}
+      {companyAccessModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-hidden border border-outline-variant shadow-2xl flex flex-col animate-scale-up">
+            <div className="p-5 border-b border-outline-variant flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined">apartment</span>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-headline-md text-primary truncate">Akun Portal Perusahaan</h3>
+                  <p className="text-xs text-text-muted mt-0.5 truncate">
+                    {companyAccessModal} · login di{" "}
+                    <code className="font-mono">/perusahaan/{companyAccessModal.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}</code>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompanyAccessModal(null)}
+                className="w-9 h-9 rounded-lg hover:bg-surface-container flex items-center justify-center cursor-pointer shrink-0"
+              >
+                <span className="material-symbols-outlined text-text-muted">close</span>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto">
+              <div>
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Daftar Akun</h4>
+                {companyAccessLoading ? (
+                  <div className="py-8 text-center">
+                    <span className="material-symbols-outlined text-2xl text-text-muted animate-spin inline-block">progress_activity</span>
+                  </div>
+                ) : companyUsers.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-surface border border-dashed border-outline-variant text-center">
+                    <p className="text-xs text-text-muted">
+                      Belum ada akun. Buat akun pertama di bawah supaya perusahaan bisa login ke portal.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {companyUsers.map((u) => (
+                      <div key={u.id} className="p-3 rounded-xl bg-surface border border-outline-variant flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-primary truncate">{u.email}</p>
+                          <p className="text-[10px] text-text-muted">
+                            {u.last_login_at
+                              ? `Login terakhir: ${new Date(u.last_login_at).toLocaleString("id-ID")}`
+                              : "Belum pernah login"}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => { setCompanyResetTarget(u); setCompanyResetPassword(""); }}
+                            className="p-1.5 rounded-lg bg-surface-container hover:bg-[#F3EFEA] cursor-pointer"
+                            title="Reset Password"
+                          >
+                            <span className="material-symbols-outlined text-[14px] text-[#5C564A]">password</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCompanyUser(u)}
+                            disabled={companyAccessSubmitting}
+                            className="p-1.5 rounded-lg bg-surface-container hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                            title="Hapus Akun"
+                          >
+                            <span className="material-symbols-outlined text-[14px] text-red-500">delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {companyResetTarget && (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3">
+                  <p className="text-xs font-bold text-amber-800">
+                    Reset password untuk: <span className="font-mono">{companyResetTarget.email}</span>
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={companyResetPassword}
+                      onChange={(e) => setCompanyResetPassword(e.target.value)}
+                      placeholder="Password baru (min 6 karakter)"
+                      className="flex-1 bg-surface-white border border-amber-200 rounded-xl px-3.5 py-2 text-sm font-bold text-primary focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      onClick={handleResetCompanyUserPassword}
+                      disabled={companyAccessSubmitting}
+                      className="px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 disabled:opacity-60 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      onClick={() => { setCompanyResetTarget(null); setCompanyResetPassword(""); }}
+                      className="px-3 py-2 rounded-xl bg-surface-white border border-amber-200 text-xs font-bold text-amber-700 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 rounded-xl bg-surface border border-outline-variant space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wide">Buat Akun Baru</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="email"
+                    value={companyAccessForm.email}
+                    onChange={(e) => setCompanyAccessForm({ ...companyAccessForm, email: e.target.value })}
+                    placeholder="email@perusahaan.com"
+                    className="w-full bg-surface-white border border-outline-variant rounded-xl px-3.5 py-2 text-sm font-bold text-primary focus:outline-none focus:border-primary"
+                  />
+                  <input
+                    type="text"
+                    value={companyAccessForm.password}
+                    onChange={(e) => setCompanyAccessForm({ ...companyAccessForm, password: e.target.value })}
+                    placeholder="Password (min 6 karakter)"
+                    className="w-full bg-surface-white border border-outline-variant rounded-xl px-3.5 py-2 text-sm font-bold text-primary focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <button
+                  onClick={handleCreateCompanyUser}
+                  disabled={companyAccessSubmitting || !companyAccessForm.email.trim() || !companyAccessForm.password}
+                  className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-black disabled:opacity-60 cursor-pointer"
+                >
+                  {companyAccessSubmitting ? "Menyimpan..." : "➕ Buat Akun"}
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-primary/[0.03] border border-primary/10">
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  Akun ini hanya bisa mengelola kartu milik <span className="font-bold text-primary">{companyAccessModal}</span> (lihat statistik tap, edit link review, toggle guard, lihat keluhan) via portal perusahaan. Tidak ada akses ke kartu perusahaan lain atau data admin.
                 </p>
               </div>
             </div>

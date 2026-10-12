@@ -37,6 +37,18 @@ export default async function CardPage({
   // yang diblokir (bukan form ulasan), pakai URL aman dari place_id.
   const safeReviewUrl = resolveReviewUrl(card.place_id, card.google_review_url);
 
+  // Tracking tap: increment counter untuk kartu aktif yang punya link review.
+  // Non-blocking (fire & forget) supaya tidak menunda redirect ke Google.
+  if (card.is_active && safeReviewUrl) {
+    void (async () => {
+      try {
+        await supabase.rpc("increment_card_tap", { p_card_id: cardId });
+      } catch {
+        // best-effort, abaikan error
+      }
+    })();
+  }
+
   // Guard ON -> pelanggan rating dulu di Ratey:
   // bintang 4-5 auto-direct ke Google Review, bintang 1-3 isi keluhan.
   if (card.is_active && safeReviewUrl && card.rating_guard) {

@@ -977,6 +977,96 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, message: "Akun dihapus." });
     }
 
+    /* ─────────────────────────────────────────────────────────────────────
+    COMPANY ACCESS MANAGEMENT (Portal /perusahaan — akun login perusahaan)
+    ───────────────────────────────────────────────────────────────────── */
+    if (action === "list_company_users") {
+      const company = String(body?.companyName || "").trim();
+      let query = supabase
+        .from("company_users")
+        .select("id, company_name, email, is_active, last_login_at, created_at")
+        .order("created_at", { ascending: true });
+      if (company) query = query.eq("company_name", company);
+      const { data, error } = await query;
+      if (error) {
+        if (error.message.includes("does not exist") || (error as any)?.code === "42P01") {
+          return NextResponse.json({ ok: true, users: [], migrated: false });
+        }
+        console.error("list company users err:", error.message);
+        return NextResponse.json({ error: "Gagal memuat daftar akun perusahaan." }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, users: data || [], migrated: true });
+    }
+
+    if (action === "create_company_user") {
+      const company = String(body?.companyName || "").trim();
+      const email = String(body?.companyUserEmail || "").trim().toLowerCase();
+      const password = String(body?.companyUserPassword || "");
+      if (!company) {
+        return NextResponse.json({ error: "Nama perusahaan wajib diisi." }, { status: 400 });
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json({ error: "Email tidak valid." }, { status: 400 });
+      }
+      if (password.length < 6) {
+        return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+      }
+      const passwordHash = await hashPassword(password);
+      const { error } = await supabase.from("company_users").insert({
+        company_name: company,
+        email,
+        password_hash: passwordHash,
+        is_active: true,
+      });
+      if (error) {
+        if ((error as any)?.code === "23505") {
+          return NextResponse.json(
+            { error: `Email ${email} sudah terdaftar untuk perusahaan ini.` },
+            { status: 409 }
+          );
+        }
+        if (error.message.includes("does not exist") || (error as any)?.code === "42P01") {
+          return NextResponse.json(
+            { error: "Tabel company_users belum ada. Jalankan SQL migration terbaru." },
+            { status: 400 }
+          );
+        }
+        throw new Error(error.message);
+      }
+      return NextResponse.json({
+        ok: true,
+        message: `Akun ${email} untuk "${company}" berhasil dibuat.`,
+      });
+    }
+
+    if (action === "reset_company_user_password") {
+      const id = Number(body?.companyUserId);
+      const password = String(body?.companyUserPassword || "");
+      if (!Number.isFinite(id) || id <= 0) {
+        return NextResponse.json({ error: "ID akun tidak valid." }, { status: 400 });
+      }
+      if (password.length < 6) {
+        return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+      }
+      const passwordHash = await hashPassword(password);
+      const { error } = await supabase
+        .from("company_users")
+        .update({ password_hash: passwordHash })
+        .eq("id", id);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ ok: true, message: "Password akun perusahaan direset." });
+    }
+
+    if (action === "delete_company_user") {
+      const id = Number(body?.companyUserId);
+      if (!Number.isFinite(id) || id <= 0) {
+        return NextResponse.json({ error: "ID akun tidak valid." }, { status: 400 });
+      }
+      const { error } = await supabase.from("company_users").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ ok: true, message: "Akun perusahaan dihapus." });
+    }
+
     return NextResponse.json({ error: "Aksi tidak valid." }, { status: 400 });
   } catch (err) {
     console.error("admin/action error:", err);

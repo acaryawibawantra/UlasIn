@@ -256,3 +256,57 @@ alter table cards
   add column if not exists prod_card_ready boolean not null default false,
   add column if not exists prod_nfc_installed boolean not null default false,
   add column if not exists prod_ready_sell boolean not null default false;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- TRACKING TAP/KUNJUNGAN KARTU
+-- tap_count   : berapa kali kartu di-tap NFC / di-scan QR (counter sederhana).
+-- last_tap_at : kapan terakhir kali kartu diakses.
+-- Di-increment atomik lewat fungsi increment_card_tap() setiap halaman kartu
+-- yang aktif dibuka (sebelum redirect ke Google Review).
+-- ──────────────────────────────────────────────────────────────────────────────
+alter table cards
+  add column if not exists tap_count int not null default 0,
+  add column if not exists last_tap_at timestamptz;
+
+create index if not exists idx_cards_last_tap on cards (last_tap_at desc);
+
+-- Atomic increment supaya counter akurat walau ada tap bersamaan.
+-- Mengembalikan nilai tap_count terbaru (opsional, untuk debugging).
+create or replace function increment_card_tap(p_card_id text)
+returns int
+language plpgsql
+as $$
+declare
+  new_count int;
+begin
+  update cards
+    set tap_count = tap_count + 1,
+        last_tap_at = now()
+    where card_id = upper(p_card_id)
+    returning tap_count into new_count;
+
+  return coalesce(new_count, 0);
+end;
+$$;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- AKUN PORTAL PERUSAHAAN
+-- company_name = nama batch perusahaan (sama dengan cards.batch_label).
+-- Satu perusahaan bisa punya beberapa akun (owner + staff).
+-- Password di-hash pakai bcrypt (sama dengan client_users).
+-- RLS tanpa policy: hanya server (service_role) yang bisa akses.
+-- ──────────────────────────────────────────────────────────────────────────────
+create table if not exists company_users (
+  id bigserial primary key,
+  company_name text not null,
+  email text not null,
+  password_hash text not null,
+  is_active boolean not null default true,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (company_name, email)
+);
+
+create index if not exists idx_company_users_company on company_users (company_name);
+create index if not exists idx_company_users_email on company_users (lower(email));
+alter table company_users enable row level security;
