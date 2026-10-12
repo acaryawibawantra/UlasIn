@@ -40,6 +40,43 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    // RESET KARTU: kosongkan semua data & nonaktifkan.
+    if (body?.reset === true) {
+      const { error: resetErr } = await supabase
+        .from("cards")
+        .update({
+          business_name: null,
+          place_id: null,
+          google_review_url: null,
+          pin_hash: null,
+          is_active: false,
+          activated_at: null,
+          rating_guard: false,
+          tap_count: 0,
+          last_tap_at: null,
+          pin_failed_attempts: 0,
+          pin_locked_until: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("card_id", cardIdUpper);
+
+      if (resetErr) {
+        console.error("company card reset err:", resetErr.message);
+        return NextResponse.json({ error: "Gagal mereset kartu." }, { status: 500 });
+      }
+
+      await logCardChange(supabase, {
+        cardId: cardIdUpper,
+        action: "company_reset",
+        actor: `company:${session.companyName}`,
+        oldValues: pickTrackedFields(card),
+        newValues: { business_name: null, google_review_url: null, is_active: false },
+        ...getRequestMeta(req),
+      });
+
+      return NextResponse.json({ ok: true, message: "Kartu berhasil direset." });
+    }
+
     const updates: Record<string, any> = {};
 
     if (typeof body.ratingGuard === "boolean") {

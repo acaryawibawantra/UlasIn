@@ -81,6 +81,13 @@ export default function CompanyDashboard({
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
 
+  // Reset + Audit state
+  const [resetTarget, setResetTarget] = useState<CardRow | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [auditCard, setAuditCard] = useState<CardRow | null>(null);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
   // Edit link state
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -225,6 +232,50 @@ export default function CompanyDashboard({
       setFeedbackList([]);
     } finally {
       setFeedbackLoading(false);
+    }
+  }
+
+  async function handleResetCard() {
+    if (!resetTarget) return;
+    if (
+      !window.confirm(
+        `Reset kartu ${resetTarget.card_id}?\n\nSemua data (nama bisnis, link review, guard, counter tap) akan dikosongkan dan kartu dinonaktifkan. Tindakan ini tidak bisa dibatalkan.`
+      )
+    ) {
+      setResetTarget(null);
+      return;
+    }
+    setResetting(true);
+    try {
+      const res = await fetch("/api/company/card", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId: resetTarget.card_id, reset: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gagal mereset kartu.");
+      alert(data?.message || "Kartu berhasil direset.");
+      setResetTarget(null);
+      await loadCards();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal mereset kartu.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  async function openAudit(card: CardRow) {
+    setAuditCard(card);
+    setAuditLogs([]);
+    setAuditLoading(true);
+    try {
+      const res = await fetch(`/api/company/audit?cardId=${card.card_id}`);
+      const data = await res.json();
+      if (res.ok) setAuditLogs(data.logs || []);
+    } catch {
+      setAuditLogs([]);
+    } finally {
+      setAuditLoading(false);
     }
   }
 
@@ -384,6 +435,22 @@ export default function CompanyDashboard({
                       Buka
                     </a>
                   )}
+                  <button
+                    onClick={() => openAudit(card)}
+                    className="text-xs font-bold px-3 py-2 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Lihat riwayat perubahan kartu"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">history</span>
+                    Riwayat
+                  </button>
+                  <button
+                    onClick={() => setResetTarget(card)}
+                    className="text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Reset kartu (kosongkan data & nonaktifkan)"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+                    Reset
+                  </button>
                 </div>
               </div>
             ))}
@@ -550,6 +617,93 @@ export default function CompanyDashboard({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reset Confirm */}
+      {resetTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-red-600">warning</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-[#3C3833]">Reset Kartu</h3>
+                <p className="text-xs text-[#8E897C]">{resetTarget.card_id}</p>
+              </div>
+            </div>
+            <p className="text-sm text-[#5C564A] leading-relaxed mb-5">
+              Semua data kartu ini akan dikosongkan (nama bisnis, link review, guard, counter tap) dan kartu akan dinonaktifkan. Tindakan ini tidak bisa dibatalkan.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setResetTarget(null)}
+                disabled={resetting}
+                className="flex-1 py-2.5 rounded-xl border border-[#E8E3DA] text-sm font-bold text-[#5C564A] hover:bg-gray-50 disabled:opacity-60 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleResetCard}
+                disabled={resetting}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 disabled:opacity-60 cursor-pointer"
+              >
+                {resetting ? "Mereset..." : "Ya, Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Audit / Riwayat */}
+      {auditCard && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="sticky top-0 bg-white border-b border-[#E8E3DA] px-5 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-[#3C3833]">Riwayat Kartu</h2>
+                <p className="text-xs text-[#8E897C] font-mono">{auditCard.card_id}</p>
+              </div>
+              <button onClick={() => setAuditCard(null)} className="text-[#8E897C] hover:text-[#3C3833]">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {auditLoading ? (
+                <div className="text-center py-10 text-[#8E897C]">
+                  <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                  <p className="text-sm mt-2">Memuat riwayat...</p>
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="text-center py-10 text-[#8E897C] text-sm">
+                  Belum ada riwayat perubahan untuk kartu ini.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {auditLogs.map((log) => (
+                    <div key={log.id} className="border border-[#E8E3DA] rounded-xl p-3 bg-[#FAF8F5]">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-[#3C3833]">{log.action}</span>
+                        <span className="text-[10px] text-[#B5AFA3]">{formatDate(log.created_at)}</span>
+                      </div>
+                      <p className="text-[11px] text-[#5C564A] mb-1">{log.actor}</p>
+                      {log.old_values && Object.keys(log.old_values).length > 0 && (
+                        <p className="text-[10px] text-red-500 font-mono">
+                          Sebelum: {JSON.stringify(log.old_values)}
+                        </p>
+                      )}
+                      {log.new_values && Object.keys(log.new_values).length > 0 && (
+                        <p className="text-[10px] text-green-600 font-mono">
+                          Sesudah: {JSON.stringify(log.new_values)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
