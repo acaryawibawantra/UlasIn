@@ -373,7 +373,7 @@ export async function POST(req: NextRequest) {
 
     // ─────────────────────────────────────────────────────────────────────
     // 4. GENERATE TABLE QR (Custom Meja Cafe) — BATCH INSERT ke DB
-    //    Skip existing (client_slug + table_num yang sudah ada tidak overwrite)
+    //    Tambah nomor setelah meja terakhir; jangan overwrite meja existing.
     // ─────────────────────────────────────────────────────────────────────
     if (action === "generate_table_qr") {
       const slug = sanitizeSlug(clientSlug || "");
@@ -383,9 +383,9 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const tableCount = Math.min(Math.max(Number(count) || 1, 1), 500);
+      const tableCount = Math.min(Math.max(Math.floor(Number(count)) || 1, 1), 500);
 
-      // 1) Fetch existing meja untuk client ini (buat di-skip)
+      // 1) Fetch existing meja untuk menentukan nomor berikutnya.
       const { data: existingRows, error: fetchError } = await supabase
         .from("table_qrs")
         .select("table_num")
@@ -397,11 +397,14 @@ export async function POST(req: NextRequest) {
       }
 
       const existingSet = new Set((existingRows || []).map((r: any) => r.table_num));
+      const lastTableNumber = Math.max(0, ...(existingRows || []).map((r) =>
+        /^\d+$/.test(r.table_num) ? Number(r.table_num) : 0
+      ));
       const newlyCreated: Array<{ id: number; client_slug: string; table_num: string; url: string }> = [];
       let skipped = 0;
 
-      // 2) Loop & upsert (skip existing)
-      for (let i = 1; i <= tableCount; i++) {
+      // 2) Insert meja tambahan; lewati konflik jika ada generate bersamaan.
+      for (let i = lastTableNumber + 1; newlyCreated.length < tableCount; i++) {
         const num = String(i).padStart(2, "0");
         if (existingSet.has(num)) { skipped++; continue; }
 
@@ -416,9 +419,15 @@ export async function POST(req: NextRequest) {
           // Unique violation (race condition) — skip dengan aman
           if ((insError as any)?.code === "23505") { skipped++; continue; }
           console.error(`insert table_qr error for ${slug}/${num}:`, insError.message);
-          continue;
+          return NextResponse.json({
+            error: `Gagal menyimpan meja ${num}. ${newlyCreated.length} meja baru sudah tersimpan; muat ulang daftar sebelum mencoba lagi.`,
+            newlyCreated,
+          }, { status: 500 });
         }
-        if (inserted) newlyCreated.push(inserted as any);
+        if (!inserted) {
+          return NextResponse.json({ error: "Database tidak mengembalikan meja yang disimpan. Muat ulang daftar sebelum mencoba lagi." }, { status: 500 });
+        }
+        newlyCreated.push(inserted as any);
       }
 
       return NextResponse.json({

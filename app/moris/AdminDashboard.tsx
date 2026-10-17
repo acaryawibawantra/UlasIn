@@ -2363,6 +2363,9 @@ export default function AdminDashboard({
         {activeTab === "custom_tables" && (() => {
           // ── Computed: Daftar unique client_slug untuk filter dropdown ──
           const clientSlugs = Array.from(new Set(tableQrs.map((t) => t.client_slug))).sort();
+          const nextTableNumber = Math.max(0, ...tableQrs
+            .filter((t) => t.client_slug === customClientSlug.toLowerCase().trim())
+            .map((t) => /^\d+$/.test(t.table_num) ? Number(t.table_num) : 0)) + 1;
           const filterAll = tableQrClientFilter === "all";
           const filteredTableQrs = filterAll
             ? tableQrs
@@ -2453,12 +2456,12 @@ export default function AdminDashboard({
                       />
                     )}
                     <p className="text-[11px] text-text-muted mt-1">
-                      URL: <span className="font-mono">{typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/{customClientSlug || "tammmu"}/01</span>
+                      URL: <span className="font-mono">{typeof window !== "undefined" ? window.location.origin : "https://ratey.site"}/{customClientSlug || "tammmu"}/{String(nextTableNumber).padStart(2, "0")}</span>
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold uppercase text-text-muted mb-1.5">Jumlah Meja</label>
+                    <label className="block text-xs font-bold uppercase text-text-muted mb-1.5">Jumlah Meja Tambahan</label>
                     <input
                       type="number"
                       min={1}
@@ -2467,7 +2470,7 @@ export default function AdminDashboard({
                       onChange={(e) => setTableGenerateCount(parseInt(e.target.value) || 1)}
                       className="w-full bg-surface-bright border border-outline-variant rounded-xl px-4 py-2.5 text-body-sm font-body-sm font-bold focus:outline-none focus:border-primary"
                     />
-                    <p className="text-[11px] text-text-muted mt-1">Meja 01 s/d Meja {String(tableGenerateCount).padStart(2, "0")}</p>
+                    <p className="text-[11px] text-text-muted mt-1">Meja {String(nextTableNumber).padStart(2, "0")} s/d Meja {String(nextTableNumber + tableGenerateCount - 1).padStart(2, "0")}</p>
                   </div>
 
                   <div className="flex flex-col">
