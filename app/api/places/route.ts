@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hasBlockedDestination } from "@/lib/blocked-destinations";
 
 // Proxy ke Google Places Autocomplete API. Sengaja dibuat lewat server
 // (bukan dipanggil langsung dari browser) supaya GOOGLE_PLACES_API_KEY
@@ -7,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(req: NextRequest) {
   const query = req.nextUrl.searchParams.get("query");
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+
+  if (hasBlockedDestination(query)) return NextResponse.json({ suggestions: [] });
 
   if (!apiKey) {
     return NextResponse.json(
@@ -42,7 +45,9 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const suggestions = (data.predictions || []).map((p: any) => ({
+  const suggestions = (data.predictions || []).filter((p: any) =>
+    !hasBlockedDestination(p.description, p.place_id)
+  ).map((p: any) => ({
     place_id: p.place_id,
     description: p.description,
   }));

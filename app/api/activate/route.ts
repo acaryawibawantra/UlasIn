@@ -3,12 +3,14 @@ import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
 import { isBlockedReviewUrl, buildPlaceReviewUrl } from "@/lib/review-url";
+import { validateCardDestination } from "@/lib/validate-card-destination";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { cardId, placeId, businessName, pin, gmapsLink } = body || {};
 
-  if (!cardId || !businessName || !pin) {
+  if (typeof cardId !== "string" || !cardId.trim() || typeof businessName !== "string" || !businessName.trim() || typeof pin !== "string" ||
+      (placeId != null && typeof placeId !== "string") || (gmapsLink != null && typeof gmapsLink !== "string")) {
     return NextResponse.json({ error: "Data nama bisnis & PIN tidak lengkap." }, { status: 400 });
   }
 
@@ -63,9 +65,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const destinationError = await validateCardDestination({
+    business_name: businessName, place_id: finalPlaceId, google_review_url: googleReviewUrl,
+  }, true);
+  if (destinationError) {
+    return NextResponse.json({ error: destinationError.error }, { status: destinationError.status });
+  }
+
   const pinHash = await bcrypt.hash(pin, 10);
 
-  const { error: updateError } = await supabase
+  const { data: activated, error: updateError } = await supabase
     .from("cards")
     .update({
       business_name: businessName,
@@ -78,11 +87,17 @@ export async function POST(req: NextRequest) {
       pin_failed_attempts: 0,
       pin_locked_until: null,
     })
-    .eq("card_id", cardId.toUpperCase());
+    .eq("card_id", cardId.toUpperCase())
+    .eq("is_active", false)
+    .select("card_id")
+    .maybeSingle();
 
   if (updateError) {
     console.error(updateError.message);
     return NextResponse.json({ error: "Gagal menyimpan aktivasi." }, { status: 500 });
+  }
+  if (!activated) {
+    return NextResponse.json({ error: "Kartu sudah diaktifkan oleh permintaan lain. Muat ulang halaman." }, { status: 409 });
   }
 
   await logCardChange(supabase, {

@@ -9,11 +9,11 @@ import { cookies } from "next/headers";
 export const CLIENT_SESSION_COOKIE = "ratey_client_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 hari
 
-function getSessionSecret(): string {
+function getSessionSecret(): string | null {
   return (
     process.env.CLIENT_SESSION_SECRET ||
     process.env.ADMIN_SECRET_KEY ||
-    "ratey-client-session-secret-2026"
+    null
   );
 }
 
@@ -46,7 +46,9 @@ export function createClientSessionToken(
     exp: Date.now() + SESSION_TTL_MS,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = crypto.createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
+  const secret = getSessionSecret();
+  if (!secret) throw new Error("Session secret belum dikonfigurasi.");
+  const sig = crypto.createHmac("sha256", secret).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
 
@@ -55,7 +57,9 @@ export function verifyClientSessionToken(token: string | undefined | null): Clie
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [body, sig] = parts;
-  const expected = crypto.createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
+  const secret = getSessionSecret();
+  if (!secret) return null;
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("base64url");
   // Constant-time compare untuk cegah timing attack
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);

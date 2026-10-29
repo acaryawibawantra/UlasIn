@@ -10,12 +10,12 @@ import { cookies } from "next/headers";
 export const COMPANY_SESSION_COOKIE = "ratey_company_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 hari
 
-function getSessionSecret(): string {
+function getSessionSecret(): string | null {
   return (
     process.env.COMPANY_SESSION_SECRET ||
     process.env.CLIENT_SESSION_SECRET ||
     process.env.ADMIN_SECRET_KEY ||
-    "ratey-company-session-secret-2026"
+    null
   );
 }
 
@@ -46,7 +46,9 @@ export function createCompanySessionToken(
     exp: Date.now() + SESSION_TTL_MS,
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = crypto.createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
+  const secret = getSessionSecret();
+  if (!secret) throw new Error("Session secret belum dikonfigurasi.");
+  const sig = crypto.createHmac("sha256", secret).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
 
@@ -57,7 +59,9 @@ export function verifyCompanySessionToken(
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [body, sig] = parts;
-  const expected = crypto.createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
+  const secret = getSessionSecret();
+  if (!secret) return null;
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("base64url");
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;

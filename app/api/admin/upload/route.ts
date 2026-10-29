@@ -8,7 +8,10 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
-    const adminSecret = process.env.ADMIN_SECRET_KEY || "ratey-admin-secret-2026";
+    const adminSecret = process.env.ADMIN_SECRET_KEY;
+    if (!adminSecret) {
+      return NextResponse.json({ error: "Akses admin belum dikonfigurasi." }, { status: 503 });
+    }
 
     // Parse FormData SEKALI di awal — secretKey dikirim via form field
     // (dashboard upload multipart, bukan JSON body seperti route action)

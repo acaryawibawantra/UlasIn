@@ -72,7 +72,10 @@ export async function POST(req: NextRequest) {
       menuItemSortOrder,
       menuItemSearchKey,
     } = body || {};
-    const adminSecret = process.env.ADMIN_SECRET_KEY || "ratey-admin-secret-2026";
+    const adminSecret = process.env.ADMIN_SECRET_KEY;
+    if (!adminSecret) {
+      return NextResponse.json({ error: "Akses admin belum dikonfigurasi." }, { status: 503 });
+    }
 
     // Support both header authorization and JSON body secretKey
     const providedKey = authHeader ? authHeader.replace("Bearer ", "") : secretKey;

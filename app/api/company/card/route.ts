@@ -3,6 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { getCompanySession } from "@/lib/company-auth";
 import { isBlockedReviewUrl, buildPlaceReviewUrl } from "@/lib/review-url";
 import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
+import { validateCardDestination } from "@/lib/validate-card-destination";
 
 export async function PATCH(req: NextRequest) {
   const session = await getCompanySession();
@@ -110,6 +111,11 @@ export async function PATCH(req: NextRequest) {
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "Tidak ada perubahan yang dikirim." }, { status: 400 });
+    }
+
+    if (updates.business_name || updates.place_id || updates.google_review_url) {
+      const destinationError = await validateCardDestination({ ...card, ...updates }, !!(updates.place_id || updates.google_review_url));
+      if (destinationError) return NextResponse.json({ error: destinationError.error }, { status: destinationError.status });
     }
 
     updates.updated_at = new Date().toISOString();

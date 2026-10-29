@@ -5,7 +5,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { secretKey } = body || {};
-    const adminSecret = process.env.ADMIN_SECRET_KEY || "ratey-admin-secret-2026";
+    const adminSecret = process.env.ADMIN_SECRET_KEY;
+    if (!adminSecret) {
+      return NextResponse.json({ error: "Akses admin belum dikonfigurasi." }, { status: 503 });
+    }
 
     if (!secretKey || secretKey !== adminSecret) {
       return NextResponse.json({ error: "Akses ditolak." }, { status: 401 });

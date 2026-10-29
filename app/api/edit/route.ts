@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { logCardChange, pickTrackedFields, getRequestMeta } from "@/lib/card-audit";
 import { isBlockedReviewUrl, buildPlaceReviewUrl } from "@/lib/review-url";
+import { validateCardDestination } from "@/lib/validate-card-destination";
 
 const MAX_PIN_ATTEMPTS = 5;
 const PIN_LOCK_MINUTES = 15;
@@ -11,7 +12,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { cardId, pin, newBusinessName, newPlaceId, newGoogleReviewUrl, newPin, ratingGuard, action } = body || {};
 
-  if (!cardId || !pin) {
+  if (typeof cardId !== "string" || !cardId.trim() || typeof pin !== "string" || !/^\d{4}$/.test(pin) ||
+      [newBusinessName, newPlaceId, newGoogleReviewUrl, newPin].some(value => value != null && typeof value !== "string")) {
     return NextResponse.json({ error: "Card ID dan PIN wajib diisi." }, { status: 400 });
   }
 
@@ -125,6 +127,11 @@ export async function POST(req: NextRequest) {
     updates.pin_hash = await bcrypt.hash(newPin, 10);
   }
 
+  if (updates.business_name || updates.place_id || updates.google_review_url) {
+    const destinationError = await validateCardDestination({ ...card, ...updates }, !!(updates.place_id || updates.google_review_url));
+    if (destinationError) return NextResponse.json({ error: destinationError.error }, { status: destinationError.status });
+  }
+
   const hasContentChanges = Object.keys(updates).length > 0;
   const hadFailedAttempts = (card.pin_failed_attempts || 0) > 0 || !!card.pin_locked_until;
 
@@ -141,14 +148,21 @@ export async function POST(req: NextRequest) {
     updates.pin_locked_until = null;
   }
 
-  const { error: updateError } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from("cards")
     .update(updates)
-    .eq("card_id", cardId.toUpperCase());
+    .eq("card_id", cardId.toUpperCase())
+    .eq("is_active", true)
+    .eq("pin_hash", card.pin_hash)
+    .select("card_id")
+    .maybeSingle();
 
   if (updateError) {
     console.error("Gagal update kartu:", updateError.message);
     return NextResponse.json({ error: "Gagal menyimpan perubahan." }, { status: 500 });
+  }
+  if (!updated) {
+    return NextResponse.json({ error: "Status kartu atau PIN telah berubah. Muat ulang dan coba lagi." }, { status: 409 });
   }
 
   if (hasContentChanges) {

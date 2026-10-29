@@ -4,6 +4,7 @@ import { resolveReviewUrl } from "@/lib/review-url";
 import ActivationForm from "./ActivationForm";
 import SmartRedirect from "./SmartRedirect";
 import RatingGuard from "./RatingGuard";
+import { hasBlockedDestination } from "@/lib/blocked-destinations";
 
 // Pastikan halaman ini SELALU mengecek database terbaru (tanpa cache Next.js)
 // setiap kali kartu di-tap NFC / di-scan QR oleh siapapun.
@@ -35,7 +36,8 @@ export default async function CardPage({
 
   // Pengaman runtime: kalau google_review_url terlanjur berisi link share Maps
   // yang diblokir (bukan form ulasan), pakai URL aman dari place_id.
-  const safeReviewUrl = resolveReviewUrl(card.place_id, card.google_review_url);
+  const blocked = hasBlockedDestination(card.business_name, card.place_id, card.google_review_url);
+  const safeReviewUrl = blocked ? "" : resolveReviewUrl(card.place_id, card.google_review_url);
 
   // Tracking tap: increment counter untuk kartu aktif yang punya link review.
   // Non-blocking (fire & forget) supaya tidak menunda redirect ke Google.
@@ -78,9 +80,11 @@ export default async function CardPage({
           <div className="w-16 h-16 rounded-2xl bg-[#F3EFEA] mx-auto mb-4 flex items-center justify-center">
             <span className="material-symbols-outlined text-[#8E897C] text-3xl">link_off</span>
           </div>
-          <h1 className="font-bold text-lg mb-1">{card.business_name || "Kartu Ratey"}</h1>
+          <h1 className="font-bold text-lg mb-1">{blocked ? "Tujuan kartu diblokir" : card.business_name || "Kartu Ratey"}</h1>
           <p className="text-xs text-[#8E897C]">
-            Link ulasan belum diatur dengan benar. Silakan hubungi pemilik usaha atau pengelola kartu.
+            {blocked
+              ? "Tujuan ulasan kartu ini diblokir. Silakan hubungi pengelola kartu untuk memperbaiki lokasi bisnis."
+              : "Link ulasan belum diatur dengan benar. Silakan hubungi pemilik usaha atau pengelola kartu."}
           </p>
         </div>
       </div>
