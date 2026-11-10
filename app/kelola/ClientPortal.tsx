@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { compressImageFile } from "@/lib/imageCompress";
 
 /* ─────────────────────────────────────────────
    Types (mirror response /api/client/me)
@@ -62,40 +63,6 @@ const emptyItemForm = {
 };
 type CategoryForm = typeof emptyCategoryForm;
 type ItemForm = typeof emptyItemForm;
-
-/* Compress client-side sebelum upload (hemat storage + loading cepat) */
-async function compressImageFile(file: File, maxDim: number): Promise<File> {
-  if (file.type === "image/gif" || file.size < 150 * 1024) return file;
-  try {
-    const img = document.createElement("img");
-    const objUrl = URL.createObjectURL(file);
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("decode"));
-      img.src = objUrl;
-    });
-    URL.revokeObjectURL(objUrl);
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    if (scale >= 1 && file.size < 400 * 1024) return file;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.width * scale));
-    canvas.height = Math.max(1, Math.round(img.height * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const isPng = file.type === "image/png";
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, isPng ? "image/png" : "image/jpeg", 0.85)
-    );
-    if (!blob) return file;
-    const baseName = file.name.replace(/\.[^.]+$/, "").slice(0, 40) || "image";
-    return new File([blob], `${baseName}.${isPng ? "png" : "jpg"}`, {
-      type: isPng ? "image/png" : "image/jpeg",
-    });
-  } catch {
-    return file;
-  }
-}
 
 export default function ClientPortal() {
   /* ── State ── */
@@ -304,7 +271,7 @@ export default function ClientPortal() {
     if (!file.type.startsWith("image/")) return showToast("err", "File harus gambar.");
     setUploadTarget(scope);
     try {
-      const maxDim = scope === "client_logo" ? 800 : scope === "client_cover" ? 1600 : 1200;
+      const maxDim = scope === "client_logo" ? 400 : scope === "client_cover" ? 1200 : 600;
       const processed = await compressImageFile(file, maxDim);
       const fd = new FormData();
       fd.append("file", processed);

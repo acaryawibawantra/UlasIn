@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
+import { compressImageFile } from "@/lib/imageCompress";
+
+const ASSET_BASE = (
+  process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
+  "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets"
+).replace(/\/+$/, "");
 
 type CardData = {
   card_id: string;
@@ -191,40 +197,6 @@ const emptyMenuItemForm: MenuItemFormState = {
   sort_order: "",
   search_key: "",
 };
-
-/* Compress & resize image client-side sebelum upload (hemat storage + loading cepat).
-   GIF (animated) & file kecil di-skip apa adanya. PNG dipertahankan PNG (jaga transparansi logo). */
-async function compressImageFile(file: File, maxDim: number): Promise<File> {
-  if (file.type === "image/gif" || file.size < 150 * 1024) return file;
-  try {
-    const img = document.createElement("img");
-    const objUrl = URL.createObjectURL(file);
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("decode"));
-      img.src = objUrl;
-    });
-    URL.revokeObjectURL(objUrl);
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    if (scale >= 1 && file.size < 400 * 1024) return file;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.width * scale));
-    canvas.height = Math.max(1, Math.round(img.height * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const isPng = file.type === "image/png";
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, isPng ? "image/png" : "image/jpeg", 0.85)
-    );
-    if (!blob) return file;
-    const ext = isPng ? "png" : "jpg";
-    const baseName = file.name.replace(/\.[^.]+$/, "").slice(0, 40) || "image";
-    return new File([blob], `${baseName}.${ext}`, { type: isPng ? "image/png" : "image/jpeg" });
-  } catch {
-    return file;
-  }
-}
 
 export default function AdminDashboard({
   secretKey,
@@ -1010,7 +982,7 @@ export default function AdminDashboard({
     }
     setUploadTarget(scope);
     try {
-      const maxDim = scope === "client_logo" ? 800 : scope === "client_cover" ? 1600 : 1200;
+      const maxDim = scope === "client_logo" ? 400 : scope === "client_cover" ? 1200 : 600;
       const processed = await compressImageFile(file, maxDim);
       const fd = new FormData();
       fd.append("file", processed);
@@ -2789,8 +2761,8 @@ export default function AdminDashboard({
                       business_name: "Tammmu Coffee",
                       status: "active",
                       template_key: "tammmu_v1",
-                      logo_url: "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets/tammmu/brand/logo-fiks.png",
-                      cover_mobile_url: "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets/tammmu/brand/cover.png",
+                      logo_url: `${ASSET_BASE}/tammmu/brand/logo-fiks.png`,
+                      cover_mobile_url: `${ASSET_BASE}/tammmu/brand/cover.png`,
                       operating_hours: "08.00 - 22.00",
                       wifi_ssid: "Tammmu_Guest",
                       wifi_password: "tammmu2026",

@@ -1,8 +1,13 @@
-// Base URL aset foto menu Tammmu di Supabase Storage (hasil migrasi dari public/tammmu/*).
-// Preset items masih menyimpan nama file saja via resolver di /api/admin/action.
-export const TAMMMU_ASSET_BASE = "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets/tammmu/menu";
+// Base URL aset foto menu Tammmu. Default ke Cloudflare R2 (egress $0).
+// Fallback ke Supabase selama NEXT_PUBLIC_R2_PUBLIC_URL belum diisi (masa transisi migrasi).
+const ASSET_BASE = (
+  process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
+  "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets"
+).replace(/\/+$/, "");
 
-export const TAMMMU_ASSET_BRAND_BASE = "https://psmafygvgflmgnganptk.supabase.co/storage/v1/object/public/menu-assets/tammmu/brand";
+export const TAMMMU_ASSET_BASE = `${ASSET_BASE}/tammmu/menu`;
+
+export const TAMMMU_ASSET_BRAND_BASE = `${ASSET_BASE}/tammmu/brand`;
 
 export type PresetCategory = { key: string; label: string; sort_order: number };
 export type PresetItem = {

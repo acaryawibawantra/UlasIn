@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { uploadImageToR2, isR2Configured } from "@/lib/r2Storage";
 
-const BUCKET_ID = "menu-assets";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req: NextRequest) {
   try {
+    if (!isR2Configured()) {
+      return NextResponse.json(
+        { error: "Storage R2 belum dikonfigurasi. Isi env R2_* dan NEXT_PUBLIC_R2_PUBLIC_URL." },
+        { status: 503 }
+      );
+    }
     const authHeader = req.headers.get("authorization");
     const adminSecret = process.env.ADMIN_SECRET_KEY;
     if (!adminSecret) {
@@ -46,23 +51,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseServerClient();
-
-    // Pastikan bucket public ada (idempotent — service role bypass RLS)
-    const { data: buckets } = await supabase.storage.listBuckets();
-    if (!buckets?.some((b) => b.id === BUCKET_ID)) {
-      const { error: createErr } = await supabase.storage.createBucket(BUCKET_ID, {
-        public: true,
-        fileSizeLimit: MAX_FILE_SIZE,
-      });
-      if (createErr) {
-        return NextResponse.json(
-          { error: `Gagal membuat bucket storage: ${createErr.message}` },
-          { status: 500 }
-        );
-      }
-    }
-
     // Nama file unik: {folder}/{scope}-{timestamp}-{random}.ext
     const safeFolder = folder.replace(/[^a-z0-9_-]/gi, "").slice(0, 30) || "menu";
     const safeScope = scope.replace(/[^a-z0-9_-]/gi, "").slice(0, 30) || "menu_item";
@@ -70,25 +58,10 @@ export async function POST(req: NextRequest) {
     const fileName = `${safeFolder}/${safeScope}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
-    const { error: uploadErr } = await supabase.storage
-      .from(BUCKET_ID)
-      .upload(fileName, arrayBuffer, {
-        contentType: file.type,
-        cacheControl: "31536000",
-        upsert: false,
-      });
-
-    if (uploadErr) {
-      return NextResponse.json(
-        { error: `Upload gagal: ${uploadErr.message}` },
-        { status: 500 }
-      );
-    }
-
-    const { data: publicUrlData } = supabase.storage.from(BUCKET_ID).getPublicUrl(fileName);
+    const publicUrl = await uploadImageToR2(fileName, arrayBuffer, file.type);
 
     return NextResponse.json({
-      url: publicUrlData.publicUrl,
+      url: publicUrl,
       path: fileName,
       size: file.size,
       type: file.type,

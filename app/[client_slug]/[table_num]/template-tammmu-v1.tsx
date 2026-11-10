@@ -230,6 +230,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
             src={client.cover_mobile_url}
             alt={`${client.business_name} Welcome Cover`}
             className="absolute inset-0 w-full h-full object-cover object-center z-0"
+            decoding="async"
           />
           <div
             className="relative z-10 w-full pb-4 pt-16 flex flex-col items-center justify-center"
@@ -264,7 +265,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
         <div className="max-w-xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {client.logo_url ? (
-              <img src={client.logo_url} alt={`${client.business_name} Logo`} className="h-8 sm:h-10 w-auto object-contain" />
+              <img src={client.logo_url} alt={`${client.business_name} Logo`} className="h-8 sm:h-10 w-auto object-contain" decoding="async" />
             ) : (
               <div
                 className="h-8 w-8 rounded-xl flex items-center justify-center"
@@ -297,6 +298,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
                 src={client.logo_url}
                 alt={`${client.business_name} Logo`}
                 className="h-10 sm:h-12 w-auto max-w-[200px] object-contain"
+                decoding="async"
               />
             ) : (
               <div
@@ -486,6 +488,8 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
                       alt={`${client.business_name} Logo`}
                       className="h-4 w-auto object-contain"
                       style={{ filter: "brightness(0) invert(1)", opacity: 0.7 }}
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <span
@@ -528,6 +532,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
                         alt={product.name}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div
@@ -731,7 +736,7 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
           >
             {selectedProduct.image ? (
               <div className="relative w-full aspect-square rounded-2xl overflow-hidden" style={{ background: bgAlt }}>
-                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" decoding="async" />
                 {selectedProduct.badge && (
                   <span
                     className="absolute top-3 left-3 text-white text-[9px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider font-body"
@@ -751,6 +756,8 @@ export default function TemplateTammmuV1({ client, categories, items, tableNum }
                     src={client.logo_url}
                     alt={`${client.business_name} Logo`}
                     className="h-7 w-auto object-contain opacity-60"
+                    loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   <span className="material-symbols-outlined text-3xl opacity-40" style={{ color: onBg }}>
