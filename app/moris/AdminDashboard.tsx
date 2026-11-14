@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { compressImageFile } from "@/lib/imageCompress";
+import { imageSrc } from "@/lib/imageUrl";
 
 const ASSET_BASE = (
   process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
@@ -1027,7 +1028,7 @@ export default function AdminDashboard({
           <div className="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant bg-surface overflow-hidden flex items-center justify-center shrink-0">
             {cfg.url ? (
               <img
-                src={cfg.url}
+                src={imageSrc(cfg.url)}
                 alt="preview"
                 className="w-full h-full object-cover"
                 onError={(e) => ((e.target as HTMLImageElement).style.opacity = "0.2")}
@@ -2798,7 +2799,7 @@ export default function AdminDashboard({
                           <div className="w-12 h-12 rounded-xl bg-[#F3EFEA] border border-[#E8E3DA] flex items-center justify-center overflow-hidden shrink-0">
                             {client.logo_url ? (
                               <img
-                                src={client.logo_url}
+                                src={imageSrc(client.logo_url)}
                                 alt={client.business_name}
                                 className="w-full h-full object-cover"
                                 loading="lazy"
@@ -3245,7 +3246,7 @@ export default function AdminDashboard({
                               <div className="w-20 h-20 shrink-0 rounded-xl bg-[#F3EFEA] border border-[#E8E3DA] overflow-hidden flex items-center justify-center">
                                 {item.image_url ? (
                                   <img
-                                    src={item.image_url}
+                                    src={imageSrc(item.image_url)}
                                     alt={item.name}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
@@ -4393,7 +4394,7 @@ export default function AdminDashboard({
                   {menuItemFormValue.image_url && (
                     <div className="mt-2 flex items-start gap-3 p-3 rounded-xl bg-surface-container border border-outline-variant">
                       <img
-                        src={menuItemFormValue.image_url}
+                        src={imageSrc(menuItemFormValue.image_url)}
                         alt="Preview"
                         className="w-16 h-16 rounded-lg object-cover border border-outline-variant bg-[#F3EFEA] shrink-0"
                         onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}

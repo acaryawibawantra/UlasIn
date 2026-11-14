@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { compressImageFile } from "@/lib/imageCompress";
+import { imageSrc } from "@/lib/imageUrl";
 
 /* ─────────────────────────────────────────────
    Types (mirror response /api/client/me)
@@ -335,7 +336,7 @@ export default function ClientPortal() {
         <div className="flex items-stretch gap-3">
           <div className="w-20 h-20 rounded-xl border-2 border-dashed border-[#E8E3DA] bg-[#FAF8F5] overflow-hidden flex items-center justify-center shrink-0">
             {cfg.url ? (
-              <img src={cfg.url} alt="preview" className="w-full h-full object-cover" />
+              <img src={imageSrc(cfg.url)} alt="preview" className="w-full h-full object-cover" />
             ) : (
               <span className="material-symbols-outlined text-[#B5AFA3]">image</span>
             )}
@@ -429,7 +430,7 @@ export default function ClientPortal() {
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[#FAF8F5] border border-[#E8E3DA] overflow-hidden flex items-center justify-center shrink-0">
               {client.logo_url ? (
-                <img src={client.logo_url} alt="logo" className="w-full h-full object-contain" />
+                <img src={imageSrc(client.logo_url)} alt="logo" className="w-full h-full object-contain" />
               ) : (
                 <span className="material-symbols-outlined text-[#8E897C]">storefront</span>
               )}
@@ -638,7 +639,7 @@ export default function ClientPortal() {
                           >
                             <div className="w-20 h-20 shrink-0 rounded-xl bg-[#FAF8F5] border border-[#E8E3DA] overflow-hidden flex items-center justify-center">
                               {item.image_url ? (
-                                <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
+                                <img src={imageSrc(item.image_url)} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                               ) : (
                                 <span className="material-symbols-outlined text-[#B5AFA3]">restaurant</span>
                               )}

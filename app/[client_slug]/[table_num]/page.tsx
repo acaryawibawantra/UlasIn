@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { imageSrc } from "@/lib/imageUrl";
 import TemplateTammmuV1 from "./template-tammmu-v1";
 import { Suspense } from "react";
 
@@ -93,7 +94,7 @@ export default async function ClientTemplatePage({ params }: { params: Promise<P
         price_label: r.price_label,
         price_num: typeof r.price_num === "number" ? r.price_num : null,
         description: r.description || null,
-        image_url: r.image_url || null,
+        image_url: imageSrc(r.image_url) || null,
         badge: r.badge || null,
         is_featured: !!r.is_featured,
         search_key: r.search_key || null,
@@ -135,8 +136,8 @@ export default async function ClientTemplatePage({ params }: { params: Promise<P
         client={{
           slug: client.slug,
           business_name: client.business_name,
-          logo_url: client.logo_url,
-          cover_mobile_url: client.cover_mobile_url,
+          logo_url: imageSrc(client.logo_url),
+          cover_mobile_url: imageSrc(client.cover_mobile_url),
           theme_accent: client.theme_accent,
           theme_bg: client.theme_bg,
           tagline: client.tagline,
